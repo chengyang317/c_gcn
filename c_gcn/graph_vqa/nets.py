@@ -22,6 +22,8 @@ class CgsGraphQNet(Net):
         self.reset_parameters()
 
     def reset_parameters(self, init='uniform'):
+        super().reset_parameters()
+        print('glove init')
         self.embedding.weight.data.copy_(self.q_vocab.glove_embed('glove.6B.300d'))
 
     def forward(self, q_labels, q_len):
@@ -137,6 +139,7 @@ class CondGraphVqaNet(LayerNet):
                  ):
         super().__init__(layers)
         self.filter_method = filter_method
+        self.reset_parameters()
 
     def forward(self, obj_feats, obj_coord, q_feats):
         graph = Graph(obj_feats, obj_coord, filter_method=self.filter_method)

@@ -51,7 +51,7 @@ init_params = {
                                   # 'cond_graph_conv_layer',
                                   'cond_graph_cls_layer'
                                   ),
-    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 2 + (1024*4,),
+    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 2 + (1024*2,),
     'graph_vqa_net_layer_cond_dims': (1024, )*11,
     'graph_vqa_net_layer_edge_dims': (512, )*11,
     'graph_vqa_net_layer_out_dims': (1024,) * 3 + (3001, ),
@@ -59,12 +59,12 @@ init_params = {
                                     '{'
                                     '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
                                     '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear"},'
-                                    '"pool": "weight^mix"'
+                                    '"pool": "weight^max"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "share", "weight": "softmax^share^8"},'
-                                    '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share"},'
-                                    '"pool": "weight^mix"'
+                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear"},'
+                                    '"pool": "weight^max"'
                                     '}',
                                     # '{'
                                     # '"edge": {"feat": "share", "weight": "softmax^share^8"},'
