@@ -351,10 +351,11 @@ class EdgeMirror(EdgeOp):
 class EdgeTopK(EdgeOp):
     op_name = 'TOPK'
 
-    def __init__(self, by_attr: torch.Tensor, reduce_size, last_op, name=None):
+    def __init__(self, by_attr: torch.Tensor, reduce_size, last_op, name=None, keep_self=False):
         self.by_attr = by_attr
         self.reduce_size = reduce_size
         self.top_ids = None
+        self.keep_self = keep_self
         name = name or f'top_{reduce_size}'
         super().__init__(name, last_op)
 
@@ -366,12 +367,12 @@ class EdgeTopK(EdgeOp):
         attr_c = attr.shape[-1]
         assert attr.view(-1, attr_c).shape[0] == self.last_op.edge_num
         attr = self.reshape(attr, dim_is_4=True)
-        self.by_attr, top_ids = self.attr_topk(attr, -2, self.reduce_size)  # b, n_num, k, 1
+        self.by_attr, top_ids = self.attr_topk(attr, -2, self.reduce_size, keep_self=self.keep_self)  # b, n_num, k, 1
         self.top_ids = top_ids.squeeze(-1)  # b, n_num, k
         self.indexes = self.reshape(last_op.indexes).gather(index=self.top_ids, dim=2).view(-1)
 
     @classmethod
-    def attr_topk(cls, attr, dim, reduce_size=-1, use_abs=False):
+    def attr_topk(cls, attr, dim, reduce_size=-1, use_abs=False, keep_self=False):
         """
 
         :param attr: b_num, n_num, -1, k_num or b_num, n_num, k_num
@@ -388,7 +389,15 @@ class EdgeTopK(EdgeOp):
                 _, top_indexes = attr.abs().topk(reduce_size, dim=dim, sorted=False)
                 attr = attr.gather(index=top_indexes, dim=-2)
             else:
-                attr, top_indexes = attr.topk(reduce_size, dim=dim, sorted=False)  # b,obj_num,max_size,k_size
+                if not keep_self:
+                    attr, top_indexes = attr.topk(reduce_size, dim=dim, sorted=False)  # b,obj_num,max_size,k_size
+                else:
+                    assert attr.size(1) == attr.size(2)
+                    loop_mask = torch.eye(attr.size(1))[None, :, :, None].expand(attr.size(0), -1, -1, attr.size(-1)).cuda(attr.device).bool()
+                    fake_attr = attr.masked_fill(loop_mask, 1000.)
+                    _, top_indexes = fake_attr.topk(reduce_size, dim=dim, sorted=False)
+                    attr = attr.gather(index=top_indexes, dim=-2)
+
         else:
             top_indexes = None
         return attr, top_indexes

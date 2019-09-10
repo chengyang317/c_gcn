@@ -493,15 +493,11 @@ class EdgeWeightLayer(nn.Module):
 
         mirror_op = EdgeMirror(edge_feats.op, 'mirror')
         edge_logits = mirror_op.attr_process(edge_logits)
-        # topk_op = EdgeTopK(edge_logits.value, self.reduce_size, edge_logits.op, 'topk')
-        # topk_logits = topk_op.by_attr.view(-1, topk_op.by_attr.shape[-1])
-        # graph.edge.edge_attrs['logits'] = EdgeAttr('logits', topk_logits, topk_op)
-        # edge_weights = topk_op.norm(topk_logits, self.norm_method).view(-1, topk_logits.shape[-1])
-        # graph.edge.edge_attrs['weights'] = EdgeAttr('weights', edge_weights, topk_op)
 
         graph.edge.edge_attrs['logits'] = edge_logits
         edge_weights = mirror_op.norm(edge_logits.value, self.norm_method)
-        topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk')
+
+        topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=True)
         topk_weights = topk_op.by_attr.view(-1, topk_op.by_attr.shape[-1])
         graph.edge.edge_attrs['weights'] = EdgeAttr('weights', topk_weights, topk_op)
         return graph
@@ -766,7 +762,7 @@ class NodeWeightLayer(nn.Module):
         super().__init__()
         self.node_dim = node_dim
         self.edge_dim = edge_dim
-        self.weight_method, self.node_method = str_split(method, '^')
+        self.weight_method, self.node_method, self.norm_method = str_split(method, '^')
         if self.node_method == 'linear':
             self.node_logit_l = nn.Sequential(
                 nn.Dropout(dropout),
@@ -781,14 +777,22 @@ class NodeWeightLayer(nn.Module):
     def layer_key(self):
         return f'{self.node_dim}'
 
+    def norm(self, logits):
+        if self.norm_method == 'sigmoid':
+            return logits.sigmoid() + 0.5
+        elif self.norm_method == 'softmax':
+            return logits.softmax(dim=1)
+        else:
+            raise NotImplementedError()
+
     def forward(self, graph: Graph):
         if self.node_method == 'linear':
             node_logits = self.node_logit_l(graph.node_feats)
             graph.node.logit_layers[self.layer_key] = self.node_logit_l
-            node_weights = node_logits.sigmoid() + 0.5
+            node_weights = self.norm(node_logits)
         elif self.node_method == 'share':
             node_logits = graph.node.logit_layers[self.layer_key](graph.node_feats)
-            node_weights = node_logits.sigmoid() + 0.5
+            node_weights = self.norm(node_logits)
         elif self.node_method == 'inherit':
             node_weights = graph.node.weights
         else:
