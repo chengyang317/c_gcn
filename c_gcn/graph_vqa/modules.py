@@ -17,13 +17,12 @@ class FilmFusion(nn.Module):
                  out_dim: int,
                  norm_type='layer',
                  dropout: float = 0.,
-                 cond_dropout: float = 0.,
                  act_type: str = 'relu'
                  ):
         super().__init__()
         self.cond_proj_l = nn.Sequential(
-            # nn.Dropout(cond_dropout),
-            nn.utils.weight_norm(nn.Linear(cond_dim, out_dim*2))
+            nn.utils.weight_norm(nn.Linear(cond_dim, out_dim*2)),
+            nn.ReLU()
         )
         self.drop_l = nn.Dropout(dropout)
         self.film_l = Linear(in_dim, out_dim, norm_type=norm_type, norm_affine=False,
@@ -61,9 +60,13 @@ class EdgeFeatFilm(nn.Module):
             nn.utils.weight_norm(nn.Linear(node_dim, edge_dim)),
             nn.ReLU()
         )
+        edge_in_dim = edge_dim+8 if n2n_method in ('sum', 'mul', 'max') else edge_dim*2+8
+        # self.edge_proj_l = nn.Sequential(
+        #     nn.utils.weight_norm(nn.Linear(edge_in_dim, edge_dim)),
+        #     nn.ReLU()
+        # )
         self.drop_l = nn.Dropout(dropout)
-        self.film_l = FilmFusion(edge_dim+8 if n2n_method in ('sum', 'mul', 'max') else edge_dim*2+8, cond_dim, edge_dim,
-                                 cond_dropout=dropout, act_type='relu')
+        self.film_l = FilmFusion(edge_in_dim, cond_dim, edge_dim, act_type='relu')
 
         self.node_dim = node_dim
 
@@ -78,12 +81,10 @@ class EdgeFeatFilm(nn.Module):
         batch_num, node_num, _ = node_feats.shape
 
         joint_feats = node_intersect(node_feats, method=self.n2n_method)
-        # joint_feats = node_intersect(node_feats, method=self.n2n_method).view(batch_num*node_num*node_num, -1)
-        # coord = self.compute_pseudo(graph)
-        # joint_feats = torch.cat((joint_feats, coord), dim=-1)
         joint_feats = torch.cat((joint_feats, graph.edge.spatial_feats()), dim=-1).view(batch_num*node_num*node_num, -1)
 
         joint_feats = graph.edge.attr_process(joint_feats)
+        # joint_feats = self.edge_proj_l(joint_feats)
         edge_num, o_c = joint_feats.shape
 
         edge_feats = self.film_l(joint_feats.view(batch_num, -1, o_c), graph.cond_feats)
@@ -118,13 +119,14 @@ class EdgeFeatMul(nn.Module):
         )
         self.drop_l = nn.Dropout(dropout)
         self.joint_proj_l = nn.Sequential(
-            nn.utils.weight_norm((nn.Linear(edge_dim*2 if n2n_method == 'cat' else edge_dim, edge_dim))),
+            nn.utils.weight_norm((nn.Linear(edge_dim*2 + 8 if n2n_method == 'cat' else edge_dim+8, edge_dim))),
             nn.ReLU()
         )
         self.q_proj_l = nn.Sequential(
             nn.utils.weight_norm(nn.Linear(cond_dim, edge_dim)),
             nn.ReLU()
         )
+        self.relu_l = nn.ReLU()
 
     def forward(self, graph: Graph):
         if self.node_dim % 512 == 4:
@@ -136,15 +138,14 @@ class EdgeFeatMul(nn.Module):
         node_feats = self.node_proj_l(node_feats)
         batch_num, node_num, _ = node_feats.shape
 
-        n_fusion_feats = node_intersect(node_feats, method=self.n2n_method).view(batch_num * node_num * node_num, -1)
-        if graph.edge is not None:
-            graph.edge.remove_self_loop()
-            n_fusion_feats = n_fusion_feats[graph.edge_indexes]
-        joint_feats = self.joint_proj_l(n_fusion_feats)
+        joint_feats = node_intersect(node_feats, method=self.n2n_method)
+        joint_feats = torch.cat((joint_feats, graph.edge.spatial_feats()), dim=-1).view(batch_num*node_num*node_num, -1)
+        joint_feats = graph.edge.attr_process(joint_feats)
+        joint_feats = self.joint_proj_l(joint_feats)
         edge_num, o_c = joint_feats.shape
 
         edge_feats = joint_feats.view(batch_num, -1, o_c) * self.q_proj_l(graph.cond_feats).unsqueeze(1)
-        return edge_feats.view(edge_num, -1)
+        return self.relu_l(edge_feats.view(edge_num, -1))
 
 
 class EdgeFeatCat(nn.Module):
@@ -390,7 +391,7 @@ class NodeFeatLayer(nn.Module):
         if self.feat_method == 'share':
             self.feat_l = None
         elif self.feat_method == 'film':
-            self.feat_l = FilmFusion(node_dim, cond_dim, out_dim, cond_dropout=dropout, act_type='relu')
+            self.feat_l = FilmFusion(node_dim, cond_dim, out_dim, act_type='relu')
         elif self.feat_method == 'linear':
             self.feat_l = nn.Sequential(
                 Linear(node_dim, out_dim // 2, orders=('linear', 'act')),
