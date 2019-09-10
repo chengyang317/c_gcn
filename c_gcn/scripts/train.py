@@ -2,15 +2,15 @@
 import sys
 sys.path.append('../')
 import pt_pack as pt
-from c_gcns import graph_vqa
+from c_gcn import graph_vqa
 
 
 init_params = {
     # env params
     'work_dir': './work_dir',
-    'proj_name': 'cgcn',
-    'exp_name': 'vqa2_cp-linear_conv_conv_conv_cls',
-    'exp_version': 'weight_max',
+    'proj_name': 'vqa2_cp_9.10',
+    'exp_name': 'lin_con_con_cls',
+    'exp_version': 'exp',
 
     # trainer params
     'trainer_step2prog': 50,
@@ -47,30 +47,30 @@ init_params = {
     'graph_vqa_net_layer_names': ('graph_linear_layer',
                                   'cond_graph_conv_layer',
                                   'cond_graph_conv_layer',
-                                  'cond_graph_conv_layer',
+                                  # 'cond_graph_conv_layer',
                                   # 'cond_graph_conv_layer',
                                   'cond_graph_cls_layer'
                                   ),
-    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 3 + (1024*3,),
+    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 2 + (1024*4,),
     'graph_vqa_net_layer_cond_dims': (1024, )*11,
     'graph_vqa_net_layer_edge_dims': (512, )*11,
-    'graph_vqa_net_layer_out_dims': (1024,) * 4 + (3001, ),
+    'graph_vqa_net_layer_out_dims': (1024,) * 3 + (3001, ),
     'graph_vqa_net_layer_params': ('linear',
                                     '{'
                                     '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
                                     '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear"},'
-                                    '"pool": "weight^max"'
+                                    '"pool": "weight^mix"'
                                     '}',
                                     '{'
                                     '"edge": {"feat": "share", "weight": "softmax^share^8"},'
                                     '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share"},'
-                                    '"pool": "weight^max"'
+                                    '"pool": "weight^mix"'
                                     '}',
-                                    '{'
-                                    '"edge": {"feat": "share", "weight": "softmax^share^8"},'
-                                    '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share"},'
-                                    '"pool": "weight^max"'
-                                    '}',
+                                    # '{'
+                                    # '"edge": {"feat": "share", "weight": "softmax^share^8"},'
+                                    # '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share"},'
+                                    # '"pool": "weight^max"'
+                                    # '}',
                                     # '{'
                                     # '"edge": {"feat": "share", "weight": "softmax^share^8"},'
                                     # '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share"},'
