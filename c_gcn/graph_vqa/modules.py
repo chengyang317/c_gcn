@@ -22,7 +22,7 @@ class FilmFusion(nn.Module):
         super().__init__()
         self.cond_proj_l = nn.Sequential(
             nn.utils.weight_norm(nn.Linear(cond_dim, out_dim*2)),
-            nn.ReLU()
+            # nn.ReLU()
         )
         self.drop_l = nn.Dropout(dropout)
         self.film_l = Linear(in_dim, out_dim, norm_type=norm_type, norm_affine=False,
@@ -780,7 +780,7 @@ class NodeWeightLayer(nn.Module):
 
     def norm(self, logits):
         if self.norm_method == 'sigmoid':
-            return logits.sigmoid() + 0.5
+            return logits.sigmoid()
         elif self.norm_method == 'softmax':
             return logits.softmax(dim=1)
         else:

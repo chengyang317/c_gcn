@@ -8,7 +8,7 @@ from c_gcn import graph_vqa
 init_params = {
     # env params
     'work_dir': './work_dir',
-    'proj_name': 'vqa2_cp_9.10',
+    'proj_name': 'vqa2_cp_9.11',
     'exp_name': 'lin_con_con_cls',
     'exp_version': 'exp',
 
@@ -62,8 +62,8 @@ init_params = {
                                     '"pool": "weight^mix"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
+                                    '"edge": {"feat": "share", "weight": "softmax^share^8"},'
+                                    '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share^sigmoid"},'
                                     '"pool": "weight^mix"'
                                     '}',
                                     # '{'
