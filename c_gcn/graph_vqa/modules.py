@@ -498,7 +498,7 @@ class EdgeWeightLayer(nn.Module):
         graph.edge.edge_attrs['logits'] = edge_logits
         edge_weights = mirror_op.norm(edge_logits.value, self.norm_method)
 
-        topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=True)
+        topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=False)
         topk_weights = topk_op.by_attr.view(-1, topk_op.by_attr.shape[-1])
         graph.edge.edge_attrs['weights'] = EdgeAttr('weights', topk_weights, topk_op)
         return graph
