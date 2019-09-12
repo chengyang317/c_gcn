@@ -209,7 +209,7 @@ class GraphClsFilm(nn.Module):
                  dropout: float = 0.
                  ):
         super().__init__()
-        self.film_l = FilmFusion(node_dim, cond_dim, out_dim//2, dropout=dropout, cond_dropout=dropout)
+        self.film_l = FilmFusion(node_dim, cond_dim, out_dim//2, dropout=dropout)
 
         self.linear_l = nn.Sequential(
             nn.utils.weight_norm(nn.Linear(out_dim // 2, out_dim // 2)),
@@ -219,7 +219,8 @@ class GraphClsFilm(nn.Module):
         self.method = method
 
     def forward(self, graph: Graph):
-        feats = self.film_l(graph.pooling_feats(self.method), graph.cond_feats)
+        graph_feats = graph.graph_feats(self.method)
+        feats = self.film_l(graph_feats, graph.cond_feats)
         logits = self.linear_l(feats)
         return logits
 
@@ -233,17 +234,19 @@ class GraphClsLinear(nn.Module):
                  ):
         super().__init__()
         self.linear_l = nn.Sequential(
+            nn.Dropout(dropout),
+            # nn.utils.weight_norm(nn.Linear(node_dim, out_dim)),
+            # nn.ReLU(inplace=True),
             nn.utils.weight_norm(nn.Linear(node_dim, out_dim // 2)),
             nn.ReLU(inplace=True),
             nn.utils.weight_norm(nn.Linear(out_dim // 2, out_dim))
         )
-        self.drop_l = nn.Dropout(dropout)
         self.method = method
 
     def forward(self, graph: Graph):
         graph_feats = graph.graph_feats(self.method)
         # feats = graph_feats + feats  # major change
-        logits = self.linear_l(self.drop_l(graph_feats))
+        logits = self.linear_l(graph_feats)
         return logits
 
 
