@@ -57,13 +57,13 @@ init_params = {
     'graph_vqa_net_layer_out_dims': (1024,) * 3 + (3001, ),
     'graph_vqa_net_layer_params': ('linear',
                                     '{'
-                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^6"},'
+                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
                                     '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
                                     '"pool": "weight^max"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^6"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
+                                    '"edge": {"feat": "cat^film", "weight": "softmax^share^8"},'
+                                    '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share^sigmoid"},'
                                     '"pool": "weight^max"'
                                     '}',
                                     # '{'

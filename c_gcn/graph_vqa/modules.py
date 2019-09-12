@@ -72,7 +72,7 @@ class EdgeFeatFilm(nn.Module):
 
     def forward(self, graph: Graph):
         if self.node_dim % 512 == 4:
-            coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
+            coord_feats = torch.cat(graph.node.size_center, dim=-1)
             node_feats = self.drop_l(graph.node_feats)
             node_feats = torch.cat((node_feats, coord_feats), dim=-1)
         else:
@@ -91,7 +91,7 @@ class EdgeFeatFilm(nn.Module):
         return edge_feats.view(edge_num, -1)
 
     def compute_pseudo(self, graph: Graph):
-        node_size, node_centre = graph.node.spatial_attr
+        node_size, node_centre = graph.node.size_center
         node_dis = node_intersect(node_centre, 'minus')  # b, k, k, 2
         node_dis = node_dis.view(-1, 2)
         coord_x, coord_y = node_dis.chunk(2, dim=-1)
@@ -130,7 +130,7 @@ class EdgeFeatMul(nn.Module):
 
     def forward(self, graph: Graph):
         if self.node_dim % 512 == 4:
-            coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
+            coord_feats = torch.cat(graph.node.size_center, dim=-1)
             node_feats = self.drop_l(graph.node_feats)
             node_feats = torch.cat((node_feats, coord_feats), dim=-1)
         else:
@@ -180,7 +180,7 @@ class EdgeFeatCat(nn.Module):
 
     def forward(self, graph: Graph):
         if self.node_dim % 512 == 4:
-            coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
+            coord_feats = torch.cat(graph.node.size_center, dim=-1)
             node_feats = self.drop_l(graph.node_feats)
             node_feats = torch.cat((node_feats, coord_feats), dim=-1)
         else:
@@ -423,7 +423,7 @@ class NodeFeatLayer(nn.Module):
             graph.node.feat_layers[self.layer_key] = feat_l
 
         if self.node_dim % 512 == 4:
-            coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
+            coord_feats = torch.cat(graph.node.size_center, dim=-1)
             node_feats = self.drop_l(graph.node_feats)
             node_feats = torch.cat((node_feats, coord_feats), dim=-1)
         else:
@@ -498,7 +498,7 @@ class EdgeWeightLayer(nn.Module):
         graph.edge.edge_attrs['logits'] = edge_logits
         edge_weights = mirror_op.norm(edge_logits.value, self.norm_method)
 
-        topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=False)
+        topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=True)
         topk_weights = topk_op.by_attr.view(-1, topk_op.by_attr.shape[-1])
         graph.edge.edge_attrs['weights'] = EdgeAttr('weights', topk_weights, topk_op)
         return graph
@@ -611,7 +611,7 @@ class CgsGraphConv(nn.Module):
         self.precision_rho.data.uniform_(0.0, 1.0)
 
     def compute_pseudo(self, graph: Graph):
-        node_size, node_centre = graph.node.spatial_attr
+        node_size, node_centre = graph.node.size_center
         node_dis = node_intersect(node_centre, 'minus')  # b, k, k, 2
         node_dis = node_dis.view(-1, 2)
         node_dis = graph.edge.topk_op().attr_process(EdgeAttr('node_dist', node_dis, EdgeNull()))

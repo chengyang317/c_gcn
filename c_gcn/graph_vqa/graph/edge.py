@@ -24,11 +24,14 @@ class EdgeOp(object):
     def __init__(self, name, last_op):
         self.name = name or self.op_name
         self.last_op = last_op
+        self.node = None
         if last_op is not None:
             last_op.register_op(self)
+            self.node = last_op.node
         self._indexes, self._coords, self._mirror_flag, self._loop_flag = (None,) * 4
         self.edge_attrs: Dict[str, EdgeAttr] = {}
         self.next_ops = {}
+        self.mask = None
         self.op_process()
 
     def op_process(self):
@@ -78,15 +81,15 @@ class EdgeOp(object):
 
     @property
     def node_num(self):
-        if hasattr(self, '_node_num'):
-            return self._node_num
-        return self.last_op.node_num
+        return self.node.node_num
 
     @property
     def batch_num(self):
-        if hasattr(self, '_batch_num'):
-            return self._batch_num
-        return self.last_op.batch_num
+        return self.node.batch_num
+
+    @property
+    def device(self):
+        return self.node.device
 
     def register_op(self, op):
         self.next_ops[op.name] = op
@@ -181,8 +184,9 @@ class EdgeOp(object):
 class EdgeNull(EdgeOp):
     op_name = 'NULL'
 
-    def __init__(self):
+    def __init__(self, node):
         super().__init__('null', None)
+        self.node = node
 
     def attr_process(self, attr):
         if attr is None:
@@ -198,14 +202,30 @@ class EdgeNull(EdgeOp):
 class EdgeInit(EdgeOp):
     op_name = 'INIT'
     ids_cache = {}
+    meshgrid_cache = {}
 
-    def __init__(self, method: str, batch_num, node_num, device=None):
-        self._batch_num, self._node_num = batch_num, node_num
-        self.method = method
-        self.device = device
-        super().__init__(f'init_{method}', EdgeNull())
+    def __init__(self, node):
+        super().__init__(f'init', EdgeNull(node))
+
+    @property
+    def meshgrid(self):
+        key = f'{self.batch_num}_{self.node_num}'
+        if key not in self.meshgrid_cache:
+            batch_idx, node_i, node_j = torch.meshgrid(torch.arange(self.batch_num) * self.node_num, torch.arange(self.node_num), torch.arange(self.node_num))
+            batch_idx, node_i, node_j = batch_idx.cuda(self.device), node_i.cuda(self.device), node_j.cuda(self.device)
+            node_i = batch_idx + node_i
+            node_j = batch_idx + node_j
+            self.meshgrid_cache[key] = (node_i, node_j)
+        return self.meshgrid_cache[key]
+
 
     def op_process(self):
+        edge_mask = node_intersect(self.node.mask, 'mul')  # b, n, n
+        node_i, node_j = self.meshgrid  # b, n, n
+        node_i, node_j = node_i[edge_mask], node_j[edge_mask]
+
+
+
         key = f'{self.batch_num}_{self.node_num}_{self.method}'
         if key not in self.ids_cache:
             self.ids_cache[key] = self.batch_filter_ids(self.batch_num, self.node_num, self.method, self.device)
@@ -421,7 +441,7 @@ class Edge(EdgeInit):
             'feats': None, 'params': None, 'weights': None
         }
         self.feat_layers, self.logit_layers, self.param_layers = {}, {}, {}
-        super().__init__(init_method, node.batch_num, node.node_num, node.device)
+        super().__init__(init_method, node)
 
     @property
     def node(self):
@@ -506,7 +526,7 @@ class Edge(EdgeInit):
             raise NotImplementedError()
 
     def spatial_feats(self):
-        node_size, node_centre = self.node.spatial_attr
+        node_size, node_centre = self.node.size_center
         node_dists = node_intersect(self.node.coords, 'minus')  # b, n, n, 4
         node_dists = node_dists / torch.cat((node_size, node_size), dim=-1).unsqueeze(dim=2)
         node_scale = node_intersect(node_size, 'divide')

@@ -52,7 +52,7 @@ class EdgeSpatialLayer(Layer):
 
     @staticmethod
     def compute_pseudo(node, edge, method):
-        _, node_center = node.spatial_attr
+        _, node_center = node.size_center
         node_center = node_center.view(-1, 2)
         coord = node_center[edge.coords[0]] - node_center[edge.coords[1]]  # m,2
         if method == 'cartesian':

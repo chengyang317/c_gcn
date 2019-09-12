@@ -36,7 +36,7 @@ class GraphLinearLayer(Layer):
 
     def forward(self, graph):
         if self.node_dim % 512 == 4:
-            coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
+            coord_feats = torch.cat(graph.node.size_center, dim=-1)
             node_feats = self.drop_l(graph.node_feats)
             node_feats = torch.cat((node_feats, coord_feats), dim=-1)
             # coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)

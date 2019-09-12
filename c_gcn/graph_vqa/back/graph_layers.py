@@ -24,7 +24,7 @@ class GraphLinearLayer(Layer):
         )
 
     def forward(self, graph):
-        coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
+        coord_feats = torch.cat(graph.node.size_center, dim=-1)
         node_feats = torch.cat((graph.node_feats, coord_feats), dim=-1)
         node_feats = self.proj_l(node_feats)  # b, k, hid_dim
         graph.node.update_feats(node_feats)
@@ -163,7 +163,7 @@ class FusionGraphLayer(Layer):
             self.drop_l = Null()
 
     def forward(self, graph, q_feats):
-        coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
+        coord_feats = torch.cat(graph.node.size_center, dim=-1)
         node_feats = torch.cat((graph.node_feats, coord_feats), dim=-1)
         node_feats = self.obj_proj_l(node_feats)
         node_feats = self.q_cond_l(node_feats, q_feats)
