@@ -19,11 +19,12 @@ class Node(object):
         self.feat_layers = collections.defaultdict(None)
         self.logit_layers = {}
         self.mask = None
-        self.old2new_map = self.old2new_cache.cuda(node_feats.device)
+        self.device = node_feats.device
+        self.old2new_map = self.old2new_cache.cuda(self.device)
         if self.valid_nums is not None:
-            self.mask = torch.arange(self.node_num).expand(self.batch_num, -1).cuda(self.device) < self.valid_nums[:, None]
+            self.mask = self.node_num_cache.cuda(self.device) < self.valid_nums[:, None]
             self.feats = node_feats[self.mask]
-            self.idx_map
+            self.old2new_map[self.mask.view(-1)] = torch.arange(self.mask.sum().item()).cuda(self.device)
         else:
             self.mask = torch.ones(self.batch_num, self.node_num).cuda(self.device).bool()
             self.feats = node_feats.view(-1, self.feat_num)
@@ -56,10 +57,6 @@ class Node(object):
     @property
     def indexes(self):
         return torch.arange(self.node_num*self.batch_num, device=self.device)
-
-    @property
-    def device(self):
-        return self.feats.device
 
     def update_feats(self, node_feats=None, node_boxes=None, node_weights=None):
         if node_feats is not None:
