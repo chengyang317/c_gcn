@@ -53,6 +53,7 @@ class GraphLinearLayer(Layer):
         return graph
 
 
+
 class CondGraphConvLayer(Layer):
     prefix = 'graph_conv_layer'
 
@@ -91,7 +92,7 @@ class GraphConvLayer(Layer):
         """
 
         :param node_dim:
-        :param cond_dim: 
+        :param cond_dim:
         :param edge_dim:
         :param out_dim:
         :param param: cgs:x_cond:x_x

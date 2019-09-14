@@ -28,8 +28,8 @@ class EdgeOp(object):
         if last_op is not None:
             last_op.register_op(self)
             self.node = last_op.node
-        self._indexes, self._coords, self._mirror_flag, self._loop_flag = (None,) * 4
         self.edge_attrs: Dict[str, EdgeAttr] = {}
+        self.node_i_ids, self.node_j_ids = None, None
         self.next_ops = {}
         self.mask = None
         self.op_process()
@@ -54,32 +54,6 @@ class EdgeOp(object):
         return self._attr_process(attr)
 
     @property
-    def indexes(self):
-        """
-
-        :return: m,
-        """
-        if self._indexes is None:
-            self._indexes = self.coord2ids(self._coords, self.node_num)
-        return self._indexes
-
-    @indexes.setter
-    def indexes(self, edge_indexes):
-        self._indexes = edge_indexes
-        self._coords = None
-
-    @property
-    def coords(self):
-        if self._coords is None:
-            self._coords = self.ids2coord(self._indexes, self.node_num)
-        return self._coords
-
-    @coords.setter
-    def coords(self, edge_coords):
-        self._coords = edge_coords
-        self._indexes = None
-
-    @property
     def node_num(self):
         return self.node.node_num
 
@@ -97,58 +71,6 @@ class EdgeOp(object):
     def load_op(self, op_name):
         return self.next_ops.get(op_name, None)
 
-    @classmethod
-    def ids2coord(cls, edge_ids, obj_num):
-        """
-
-        :param edge_ids: m
-        :param obj_num:
-        :return:
-        """
-        b_ids = edge_ids // (obj_num * obj_num)
-        ids = edge_ids % (obj_num * obj_num)
-        b_row = ids // obj_num
-        b_col = ids % obj_num
-        edge_row = b_row + b_ids * obj_num
-        edge_col = b_col + b_ids * obj_num
-        return torch.stack((edge_row, edge_col), dim=0)
-
-    @classmethod
-    def coord2ids(cls, edge_coord, obj_num):
-        b_ids = edge_coord[0] // obj_num
-        b_row, b_col = edge_coord % obj_num
-        ids = b_row * obj_num + b_col
-        edge_ids = ids + b_ids * obj_num * obj_num
-        return edge_ids
-
-    @property
-    def is_mirror(self):
-        if self._mirror_flag is None:
-            self._mirror_flag = self.check_mirror(self.coords, self.indexes, self.node_num)
-        return self._mirror_flag
-
-    @property
-    def is_loop(self):
-        if self._loop_flag is None:
-            self._loop_flag = self.check_loop(self.coords)
-        return self._loop_flag
-
-    @classmethod
-    def check_mirror(cls, edge_coord, edge_ids, node_num):
-        edge_row, edge_col = edge_coord
-        new_edge_ids = cls.coord2ids(torch.stack((edge_col, edge_row), dim=0), node_num)
-        return set(edge_ids.tolist()) == set(new_edge_ids.tolist())
-
-    @classmethod
-    def check_loop(cls, edge_coord):
-        row, col = edge_coord
-        mask = row == col
-        return mask.sum().item() > 0
-
-    @property
-    def edge_num(self):
-        return len(self.indexes)
-
     def reshape(self, x: torch.Tensor, dim_is_4=False):
         if dim_is_4:
             return x.view(self.batch_num, self.node_num, -1, x.shape[-1])
@@ -156,29 +78,6 @@ class EdgeOp(object):
 
     def clear_ops(self):
         self.next_ops = {}
-
-    def loop_mask(self):
-        row, col = self.coords
-        mask = row == col
-        return mask
-
-    def norm(self, attr, method):
-        attr = self.reshape(attr, dim_is_4=True)
-        if method == 'softmax':
-            ret_attr = attr.softmax(dim=-2)  # b, obj_num, n, k_size
-            # weight = weight + 1
-        elif method == 'tanh':
-            ret_attr = attr.tanh()
-            # weight = weight + 1  # major change
-            # node_weight = node_logit.tanh()
-        elif method == 'sigmoid':
-            ret_attr = attr.sigmoid()
-            # weight = weight + 1  # major change
-        elif method == 'self':
-            ret_attr = attr
-        else:
-            raise NotImplementedError()
-        return ret_attr.view(-1, ret_attr.shape[-1])
 
 
 class EdgeNull(EdgeOp):
@@ -201,81 +100,33 @@ class EdgeNull(EdgeOp):
 
 class EdgeInit(EdgeOp):
     op_name = 'INIT'
-    ids_cache = {}
-    meshgrid_cache = {}
+    caches = {}
 
     def __init__(self, node):
         super().__init__(f'init', EdgeNull(node))
 
     @property
-    def meshgrid(self):
-        key = f'{self.batch_num}_{self.node_num}'
-        if key not in self.meshgrid_cache:
-            batch_idx, node_i, node_j = torch.meshgrid(torch.arange(self.batch_num) * self.node_num, torch.arange(self.node_num), torch.arange(self.node_num))
-            batch_idx, node_i, node_j = batch_idx.cuda(self.device), node_i.cuda(self.device), node_j.cuda(self.device)
+    def meshgrid_cache(self):
+        key = f'meshgrid_{self.batch_num}_{self.node_num}'
+        if key not in self.caches:
+            batch_idx, node_i, node_j = torch.meshgrid(torch.arange(self.batch_num) * self.node_num,
+                                                       torch.arange(self.node_num), torch.arange(self.node_num)
+                                                       )
             node_i = batch_idx + node_i
             node_j = batch_idx + node_j
-            self.meshgrid_cache[key] = (node_i, node_j)
-        return self.meshgrid_cache[key]
-
+            self.caches[key] = (node_i, node_j)
+        return self.caches[key]
 
     def op_process(self):
-        edge_mask = node_intersect(self.node.mask, 'mul')  # b, n, n
-        node_i, node_j = self.meshgrid  # b, n, n
-        node_i, node_j = node_i[edge_mask], node_j[edge_mask]
-
-
-
-        key = f'{self.batch_num}_{self.node_num}_{self.method}'
-        if key not in self.ids_cache:
-            self.ids_cache[key] = self.batch_filter_ids(self.batch_num, self.node_num, self.method, self.device)
-        self.indexes = self.ids_cache[key]
-        self._mirror_flag, self._loop_flag = self.check_flag(self.method)
+        edge_mask = node_intersect(self.node.mask.unsqueeze(-1), 'mul')  # b, n, n
+        node_i, node_j = self.meshgrid_cache  # b, n, n
+        node_i, node_j = node_i.cuda(self.device)[edge_mask], node_j.cuda(self.device)[edge_mask]  # k, k
+        self.node_i_ids, self.node_j_ids = self.node.old2new_map[node_i], self.node.old2new_map[node_j]
 
     def _attr_process(self, attr: torch.Tensor):
         attr = attr.view(-1, attr.shape[-1])
         assert attr.shape[0] == self.node_num * self.node_num * self.batch_num
         return attr[self.indexes]
-
-    @classmethod
-    def batch_filter_coord(cls, b_num, obj_num, filter_method, device=None):
-        edge_ids = cls.batch_filter_ids(b_num, obj_num, filter_method, device)
-        return cls.ids2coord(edge_ids, obj_num)
-
-    @classmethod
-    def batch_filter_ids(cls, b_num, obj_num, filter_method, device=None):
-        edge_ids = cls.filter_ids(obj_num, filter_method, device)
-        b_prefix = torch.arange(b_num) * obj_num * obj_num
-        edge_ids = edge_ids[None] + b_prefix.cuda(device)[:, None]
-        return edge_ids.view(-1)
-
-    @classmethod
-    def filter_ids(cls, obj_num, filter_method, device=None):
-        if filter_method == 'full':
-            filter_ids = torch.arange(0, obj_num * obj_num).long()
-        elif filter_method == 'not_eye':
-            filter_ids = (~torch.eye(obj_num).byte()).view(-1).nonzero().squeeze()
-        elif filter_method == 'tri_u':
-            filter_ids = torch.ones(obj_num, obj_num).triu(diagonal=1).byte().view(-1).nonzero().squeeze()
-        elif filter_method == 'tri':
-            filter_ids = torch.ones(obj_num, obj_num).triu(diagonal=0).byte().view(-1).nonzero().squeeze()
-        else:
-            raise NotImplementedError(f'Unknown method {filter_method}')
-        return filter_ids.cuda(device)
-
-    @classmethod
-    def check_flag(cls, filter_method):
-        if filter_method == 'full':
-            mirror_flage, loop_flag = True, True
-        elif filter_method == 'not_eye':
-            mirror_flage, loop_flag = True, False
-        elif filter_method == 'tri_u':
-            mirror_flage, loop_flag = False, False
-        elif filter_method == 'tri':
-            mirror_flage, loop_flag = False, True
-        else:
-            raise NotImplementedError()
-        return mirror_flage, loop_flag
 
 
 class EdgeAddLoop(EdgeOp):
@@ -525,14 +376,33 @@ class Edge(EdgeInit):
         else:
             raise NotImplementedError()
 
-    def spatial_feats(self):
-        node_size, node_centre = self.node.size_center
+    def load_node_attr(self, node_attr):
+        return node_attr[self.node_i_ids], node_attr[self.node_j_ids]
+
+    def load_spatial_feats(self, node_boxes):
+        node_size = (node_boxes[:, 2:] - node_boxes[:, :2])
+        node_centre = node_boxes[:, :2] + 0.5 * node_size  # b*k, 2
+        node_i_box, node_j_box = self.load_node_attr(node_boxes)
+        node_i_size, node_j_size = self.load_node_attr(node_size)
+
+        node_dist = node_i_box - node_j_box
+
         node_dists = node_intersect(self.node.coords, 'minus')  # b, n, n, 4
         node_dists = node_dists / torch.cat((node_size, node_size), dim=-1).unsqueeze(dim=2)
         node_scale = node_intersect(node_size, 'divide')
         node_mul = node_intersect(node_size[:, :, 0].unsqueeze(-1)*node_size[:, :, 1].unsqueeze(-1), 'divide')
         node_sum = node_intersect(node_size[:, :, 0].unsqueeze(-1)+node_size[:, :, 1].unsqueeze(-1), 'divide')
         return torch.cat((node_dists, node_scale, node_mul, node_sum), dim=-1)
+
+    def load_feats(self, node_feats, n2n_method):
+        node_i_feats, node_j_feats = node_feats[self.node_i_ids], node_feats[self.node_j_ids]
+        if n2n_method == 'cat':
+            joint_feats = node_i_feats + node_j_feats
+        elif n2n_method == 'mul':
+            joint_feats = node_i_feats * node_j_feats
+        else:
+            raise NotImplementedError()
+        return joint_feats
 
 
 

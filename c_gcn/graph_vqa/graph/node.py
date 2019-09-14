@@ -9,25 +9,25 @@ __all__ = ['Node']
 class Node(object):
     caches = {}
 
-    def __init__(self, graph, node_feats, node_boxes=None, node_weights=None, node_valid_nums=None):
+    def __init__(self, graph, node_feats, node_boxes=None, node_valid_nums=None):
         assert node_feats.dim() == 3
         self.graph = graph
         self.batch_num, self.node_num, self.feat_num = node_feats.shape
-        self.boxes = node_boxes
-        self.weights = node_weights
         self.valid_nums = node_valid_nums
         self.feat_layers = collections.defaultdict(None)
         self.logit_layers = {}
         self.mask = None
         self.device = node_feats.device
-        self.old2new_map = self.old2new_cache.cuda(self.device)
         if self.valid_nums is not None:
             self.mask = self.node_num_cache.cuda(self.device) < self.valid_nums[:, None]
             self.feats = node_feats[self.mask]
-            self.old2new_map[self.mask.view(-1)] = torch.arange(self.mask.sum().item()).cuda(self.device)
+            self.boxes = node_boxes[self.mask]
         else:
-            self.mask = torch.ones(self.batch_num, self.node_num).cuda(self.device).bool()
+            self.mask = self.mask_cache.cuda(self.device)
             self.feats = node_feats.view(-1, self.feat_num)
+            self.boxes = node_boxes.view(-1, 4)
+        self.old2new_map = self.old2new_cache.cuda(self.device)
+        self.old2new_map[self.mask.view(-1)] = torch.arange(self.mask.sum().item(), device=self.device)
 
     @property
     def old2new_cache(self):
@@ -53,10 +53,6 @@ class Node(object):
     @property
     def edge(self):
         return self.graph.edge
-
-    @property
-    def indexes(self):
-        return torch.arange(self.node_num*self.batch_num, device=self.device)
 
     def update_feats(self, node_feats=None, node_boxes=None, node_weights=None):
         if node_feats is not None:

@@ -78,7 +78,23 @@ class EdgeFeatFilm(nn.Module):
         else:
             node_feats = self.drop_l(graph.node_feats)
         node_feats = self.node_proj_l(node_feats)
-        batch_num, node_num, _ = node_feats.shape
+
+        node_i_feats, node_j_feats = node_feats[graph.edge.node_i_ids], node_feats[graph.edge.node_j_ids]
+        if self.n2n_method == 'cat':
+            joint_feats = node_i_feats + node_j_feats
+        elif self.n2n_method == 'mul':
+            joint_feats = node_i_feats * node_j_feats
+        else:
+            raise NotImplementedError()
+
+        node_i_boxes, node_j_boxes = graph.node.boxes[graph.edge.node_i_ids], graph.node.boxes[graph.edge.node_j_ids]
+        node_size, node_centre = graph.node.size_center
+        node_dists = node_intersect(self.node.coords, 'minus')  # b, n, n, 4
+        node_dists = node_dists / torch.cat((node_size, node_size), dim=-1).unsqueeze(dim=2)
+        node_scale = node_intersect(node_size, 'divide')
+        node_mul = node_intersect(node_size[:, :, 0].unsqueeze(-1) * node_size[:, :, 1].unsqueeze(-1), 'divide')
+        node_sum = node_intersect(node_size[:, :, 0].unsqueeze(-1) + node_size[:, :, 1].unsqueeze(-1), 'divide')
+        return torch.cat((node_dists, node_scale, node_mul, node_sum), dim=-1)
 
         joint_feats = node_intersect(node_feats, method=self.n2n_method)
         joint_feats = torch.cat((joint_feats, graph.edge.spatial_feats()), dim=-1).view(batch_num*node_num*node_num, -1)
