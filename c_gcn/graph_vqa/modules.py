@@ -415,6 +415,7 @@ class NodeFeatLayer(nn.Module):
         # self.norm_l = nn.BatchNorm1d(out_dim)
         if self.use_gin:
             self.eps = torch.nn.Parameter(torch.zeros(out_dim))
+        self.linear_l = nn.utils.weight_norm(nn.Linear(out_dim + out_dim, out_dim))
 
     @property
     def layer_key(self):
@@ -425,6 +426,7 @@ class NodeFeatLayer(nn.Module):
         if self.layer_key not in graph.node.feat_layers:
             graph.node.feat_layers[self.layer_key] = feat_l
 
+        origin_node_feats = graph.node_feats
         if self.node_dim % 512 == 4:
             coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
             node_feats = self.drop_l(graph.node_feats)
@@ -432,9 +434,9 @@ class NodeFeatLayer(nn.Module):
         else:
             node_feats = self.drop_l(graph.node_feats)
         if feat_l._get_name() == 'FilmFusion':
-            node_feats = feat_l(node_feats, graph.cond_feats)
+            new_node_feats = feat_l(node_feats, graph.cond_feats)
         else:
-            node_feats = feat_l(node_feats)
+            new_node_feats = feat_l(node_feats)
 
         edge_weights = graph.edge_attrs['weights'].value * graph.edge_attrs['params'].value
         last_op = graph.edge_attrs['weights'].op
@@ -445,18 +447,21 @@ class NodeFeatLayer(nn.Module):
             # if self.use_gin:
             #     edge_weights[last_op.loop_mask()] = 1.0 + self.eps
 
-        b_num, n_num, c_num = node_feats.shape
+        b_num, n_num, c_num = new_node_feats.shape
         edge_weights = edge_weights.view(b_num, n_num, -1, edge_weights.shape[-1])
-        node_j_feats = node_feats.view(b_num * n_num, c_num)[last_op.coords[1]].view(b_num, n_num, -1, c_num)
+        node_j_feats = new_node_feats.view(b_num * n_num, c_num)[last_op.coords[1]].view(b_num, n_num, -1, c_num)
         nb_feats = edge_weights * node_j_feats
         nb_feats = nb_feats.sum(dim=2)
 
         if not last_op.is_loop:
             if self.use_gin:
                 node_feats = node_feats * (1. + self.eps[None, None, :])
-            node_feats = node_feats + nb_feats
+            node_feats = new_node_feats + nb_feats
         else:
-            node_feats = nb_feats
+            node_feats = torch.cat((new_node_feats, nb_feats), dim=-1)
+            node_feats = self.linear_l(node_feats)
+            # node_feats = nb_feats
+            # node_feats = origin_node_feats + nb_feats
 
         # node_feats = self.act_l(self.norm_l(node_feats.view(-1, self.out_dim, 1))).view(b_num, n_num, self.out_dim)
         node_feats = self.act_l(self.norm_l(node_feats))

@@ -8,7 +8,7 @@ from c_gcn import graph_vqa
 init_params = {
     # env params
     'work_dir': './work_dir',
-    'proj_name': 'vqa2_cp_9.12',
+    'proj_name': 'vqa2_cp_9.13',
     'exp_name': 'lin_con_con_cls',
     'exp_version': 'exp',
 
@@ -57,12 +57,12 @@ init_params = {
     'graph_vqa_net_layer_out_dims': (1024,) * 3 + (3001, ),
     'graph_vqa_net_layer_params': ('linear',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
+                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
                                     '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
                                     '"pool": "weight^max"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^share^8"},'
+                                    '"edge": {"feat": "cat^film", "weight": "softmax^share^8"},'
                                     '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share^sigmoid"},'
                                     '"pool": "weight^max"'
                                     '}',
@@ -76,7 +76,7 @@ init_params = {
                                     # '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share"},'
                                     # '"pool": "weight^mix"'
                                     # '}',
-                                    'film_cat'),
+                                    'linear_cat'),
     'graph_vqa_net_layer_dropouts': (0.2,) * 11,
 
 }
