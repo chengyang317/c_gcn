@@ -415,7 +415,7 @@ class NodeFeatLayer(nn.Module):
         # self.norm_l = nn.BatchNorm1d(out_dim)
         if self.use_gin:
             self.eps = torch.nn.Parameter(torch.zeros(out_dim))
-        self.linear_l = nn.utils.weight_norm(nn.Linear(out_dim + out_dim, out_dim))
+        # self.linear_l = nn.utils.weight_norm(nn.Linear(out_dim + out_dim, out_dim))
 
     @property
     def layer_key(self):
@@ -458,9 +458,9 @@ class NodeFeatLayer(nn.Module):
                 node_feats = node_feats * (1. + self.eps[None, None, :])
             node_feats = new_node_feats + nb_feats
         else:
-            node_feats = torch.cat((new_node_feats, nb_feats), dim=-1)
-            node_feats = self.linear_l(node_feats)
-            # node_feats = nb_feats
+            # node_feats = torch.cat((new_node_feats, nb_feats), dim=-1)
+            # node_feats = self.linear_l(node_feats)
+            node_feats = nb_feats
             # node_feats = origin_node_feats + nb_feats
 
         # node_feats = self.act_l(self.norm_l(node_feats.view(-1, self.out_dim, 1))).view(b_num, n_num, self.out_dim)
