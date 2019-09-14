@@ -386,6 +386,10 @@ class Edge(EdgeInit):
         node_i_size, node_j_size = self.load_node_attr(node_size)
 
         node_dist = node_i_box - node_j_box
+        node_dist = node_dist / node_j_size
+        node_scale = node_i_size / node_j_size
+        node_mul = node_i_size[:, 0] * node_j_size[:, 1] / (node_j_size[:, 0] * node_j_size[:, 1])
+        node_sum = node_i_size[:, 0] * node_j_size[:, 1] / (node_j_size[:, 0] * node_j_size[:, 1])
 
         node_dists = node_intersect(self.node.coords, 'minus')  # b, n, n, 4
         node_dists = node_dists / torch.cat((node_size, node_size), dim=-1).unsqueeze(dim=2)
