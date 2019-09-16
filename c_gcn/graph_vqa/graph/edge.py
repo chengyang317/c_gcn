@@ -2,10 +2,10 @@ import torch
 import collections
 from typing import Dict
 from pt_pack import node_intersect
-# import torch_scatter as ts
+import torch_scatter as ts
 
 
-__all__ = ['Edge', 'EdgeAttr', 'EdgeNull', 'EdgeAddLoop', 'EdgeRemoveLoop', 'EdgeTopK', 'EdgeMirror']
+__all__ = ['Edge', 'EdgeAttr', 'EdgeNull', 'EdgeTopK',]
 
 
 EdgeAttr = collections.namedtuple('EdgeAttr', ['name', 'value', 'op'])
@@ -20,6 +20,7 @@ def masked_softmax(vec, mask, dim=1, epsilon=1e-5):
 
 class EdgeOp(object):
     op_name = 'BASE'
+    caches = {}
 
     def __init__(self, name, last_op):
         self.name = name or self.op_name
@@ -32,7 +33,32 @@ class EdgeOp(object):
         self.node_i_ids, self.node_j_ids = None, None
         self.next_ops = {}
         self.mask = None
+        self.select_ids = None
         self.op_process()
+
+    @property
+    def edge_num(self):
+        return self.node_j_ids.shape[0]
+
+    @property
+    def eye_mask_cache(self):
+        key = f'eye_{self.batch_num}_{self.node_num}'
+        if key not in self.caches:
+            eye_mask = torch.eye(self.node_num).expand(self.batch_num, -1, -1).contiguous().bool()
+            self.caches[key] = eye_mask
+        return self.caches[key]
+
+    @property
+    def meshgrid_cache(self):
+        key = f'meshgrid_{self.batch_num}_{self.node_num}'
+        if key not in self.caches:
+            batch_idx, node_i, node_j = torch.meshgrid(torch.arange(self.batch_num) * self.node_num,
+                                                       torch.arange(self.node_num), torch.arange(self.node_num)
+                                                       )
+            node_i = batch_idx + node_i
+            node_j = batch_idx + node_j
+            self.caches[key] = (node_i, node_j)
+        return self.caches[key]
 
     def op_process(self):
         raise NotImplementedError()
@@ -71,13 +97,24 @@ class EdgeOp(object):
     def load_op(self, op_name):
         return self.next_ops.get(op_name, None)
 
-    def reshape(self, x: torch.Tensor, dim_is_4=False):
-        if dim_is_4:
-            return x.view(self.batch_num, self.node_num, -1, x.shape[-1])
-        return x.view(self.batch_num, self.node_num, -1)
-
     def clear_ops(self):
         self.next_ops = {}
+
+    def norm(self, edge_attr, method):
+        if method == 'softmax':
+            exp = edge_attr.exp()
+            sums = ts.scatter_add(exp, self.node_i_ids)
+            return exp / sums[self.node_i_ids]
+        else:
+            raise NotImplementedError()
+
+    def reshape(self, edge_attr, fill_value=0.):
+        if edge_attr.dim() == 1:
+            edge_attr = edge_attr.view(-1, 1)
+        c_dim = edge_attr.size(-1)
+        new_attr = edge_attr.new_full((self.batch_num, self.node_num, self.node_num, c_dim), fill_value)
+        new_attr[self.mask] = edge_attr
+        return new_attr
 
 
 class EdgeNull(EdgeOp):
@@ -100,28 +137,16 @@ class EdgeNull(EdgeOp):
 
 class EdgeInit(EdgeOp):
     op_name = 'INIT'
-    caches = {}
 
     def __init__(self, node):
         super().__init__(f'init', EdgeNull(node))
-
-    @property
-    def meshgrid_cache(self):
-        key = f'meshgrid_{self.batch_num}_{self.node_num}'
-        if key not in self.caches:
-            batch_idx, node_i, node_j = torch.meshgrid(torch.arange(self.batch_num) * self.node_num,
-                                                       torch.arange(self.node_num), torch.arange(self.node_num)
-                                                       )
-            node_i = batch_idx + node_i
-            node_j = batch_idx + node_j
-            self.caches[key] = (node_i, node_j)
-        return self.caches[key]
 
     def op_process(self):
         edge_mask = node_intersect(self.node.mask.unsqueeze(-1), 'mul')  # b, n, n
         node_i, node_j = self.meshgrid_cache  # b, n, n
         node_i, node_j = node_i.cuda(self.device)[edge_mask], node_j.cuda(self.device)[edge_mask]  # k, k
         self.node_i_ids, self.node_j_ids = self.node.old2new_map[node_i], self.node.old2new_map[node_j]
+        self.mask = edge_mask
 
     def _attr_process(self, attr: torch.Tensor):
         attr = attr.view(-1, attr.shape[-1])
@@ -129,121 +154,26 @@ class EdgeInit(EdgeOp):
         return attr[self.indexes]
 
 
-class EdgeAddLoop(EdgeOp):
-    def __init__(self, last_op, name=None):
-        name = name or 'add_loop'
-        self.is_func = None
-        super().__init__(name, last_op)
-
-    def op_process(self):
-        last_op = self.last_op
-        if last_op.is_loop:
-            self.indexes = last_op.indexes
-            self.is_func = False
-        else:
-            dtype, device = last_op.coords.dtype, last_op.coords.device
-            loop = torch.arange(0, last_op.batch_num * last_op.node_num, dtype=dtype, device=device)
-            loop = loop.unsqueeze(0).repeat(2, 1)
-            self.coords = torch.cat([last_op.coords, loop], dim=1)
-            self.is_func = True
-        self._loop_flag = True
-
-    def _attr_process(self, attr: torch.Tensor, default_value=1):
-        if not self.is_func:
-            return attr
-        loop_attr = attr.new_full((self.batch_num*self.node_num,), 1)
-        if attr.dim() == 2:
-            _, k_size = attr.shape
-            loop_attr = loop_attr[:, None].repeat(1, k_size)
-        return torch.cat((attr, loop_attr), dim=0)
-
-
-class EdgeRemoveLoop(EdgeOp):
-    def __init__(self, last_op, name=None):
-        name = name or 'remove_loop '
-        self.mask = None
-        super().__init__(name, last_op)
-
-    def op_process(self):
-        if not self.last_op.is_loop:
-            self.indexes = self.last_op.indexes
-        else:
-            row, col = self.last_op.coords
-            mask = row != col
-            self.mask = mask
-            mask = mask.unsqueeze(0).expand_as(self.last_op.coords)
-            self.coords = self.last_op.coords[mask]
-        self._loop_flag = False
-
-    def _attr_process(self, attr: torch.Tensor):
-        if self.mask is None:
-            return attr
-        attr = attr.view(-1, attr.shape[-1])
-        return attr[self.mask]
-
-
-class EdgeMirror(EdgeOp):
-    op_name = 'MIRROR'
-
-    def __init__(self, last_op, name=None):
-        self.sort_idx = None
-        name = name or 'mirror'
-        super().__init__(name, last_op)
-
-    def op_process(self):
-        last_op = self.last_op
-        if last_op.is_mirror:
-            self._indexes = last_op.indexes
-            self.sort_idx = None
-        else:
-            edge_row, edge_col = last_op.coords
-            new_edge_row, new_edge_col = torch.cat((edge_row, edge_col)), torch.cat((edge_col, edge_row))
-            edge_ids = self.coord2ids(torch.stack((new_edge_row, new_edge_col)), last_op.node_num)
-            edge_ids, sort_idx = edge_ids.sort()
-            self.sort_idx = sort_idx  # n
-            self.indexes = edge_ids
-        self._mirror_flag = True
-        self._loop_flag = last_op.is_loop
-
-    def _attr_process(self, attr: torch.Tensor):
-        """
-        Assuming edge_attr has been processed by last op
-        :param attr: m, c
-        :return:
-        """
-        if attr.dim() > 2:
-            attr = attr.view(-1, attr.shape[-1])
-        assert attr.shape[0] == self.last_op.edge_num
-        if self.sort_idx is not None:
-            return torch.cat((attr,) * 2, dim=0)[self.sort_idx]
-        return attr
-
-
 class EdgeTopK(EdgeOp):
     op_name = 'TOPK'
 
     def __init__(self, by_attr: torch.Tensor, reduce_size, last_op, name=None, keep_self=False):
         self.by_attr = by_attr
-        self.reduce_size = reduce_size
+        self.reduce_size = min(self.node.min_node_num, reduce_size)
         self.top_ids = None
         self.keep_self = keep_self
         name = name or f'top_{reduce_size}'
         super().__init__(name, last_op)
 
     def op_process(self):
-        assert self.last_op.is_mirror
-        attr, last_op = self.by_attr, self.last_op
-        if attr.dim() == 1:
-            attr = attr.view(-1, 1)
-        attr_c = attr.shape[-1]
-        assert attr.view(-1, attr_c).shape[0] == self.last_op.edge_num
-        attr = self.reshape(attr, dim_is_4=True)
-        self.by_attr, top_ids = self.attr_topk(attr, -2, self.reduce_size, keep_self=self.keep_self)  # b, n_num, k, 1
+        last_op = self.last_op
+        by_attr = self.reshape(self.by_attr, fill_value=-100.)
+        by_attr, top_ids = self.attr_topk(by_attr, -2, self.reduce_size, keep_self=self.keep_self)  # b, n_num, k, 1
         self.top_ids = top_ids.squeeze(-1)  # b, n_num, k
-        self.indexes = self.reshape(last_op.indexes).gather(index=self.top_ids, dim=2).view(-1)
+        select_ids = self.reshape(torch.arange(last_op.edge_num).cuda(self.device))
+        self.select_ids = select_ids.gather(index=)
 
-    @classmethod
-    def attr_topk(cls, attr, dim, reduce_size=-1, use_abs=False, keep_self=False):
+    def attr_topk(self, attr, dim, reduce_size, keep_self=False):
         """
 
         :param attr: b_num, n_num, -1, k_num or b_num, n_num, k_num
@@ -253,24 +183,16 @@ class EdgeTopK(EdgeOp):
         :return: o_b, n_num, k,
         """
         k_size = attr.shape[-1]
-        if reduce_size != -1 and k_size > 1:
+        if k_size > 1:
             attr = attr.mean(dim=-1, keepdim=True)  # o_b,**, 1
-        if reduce_size != -1:
-            if use_abs:
-                _, top_indexes = attr.abs().topk(reduce_size, dim=dim, sorted=False)
-                attr = attr.gather(index=top_indexes, dim=-2)
-            else:
-                if not keep_self:
-                    attr, top_indexes = attr.topk(reduce_size, dim=dim, sorted=False)  # b,obj_num,max_size,k_size
-                else:
-                    assert attr.size(1) == attr.size(2)
-                    loop_mask = torch.eye(attr.size(1))[None, :, :, None].expand(attr.size(0), -1, -1, attr.size(-1)).cuda(attr.device).bool()
-                    fake_attr = attr.masked_fill(loop_mask, 1000.)
-                    _, top_indexes = fake_attr.topk(reduce_size, dim=dim, sorted=False)
-                    attr = attr.gather(index=top_indexes, dim=-2)
 
+        if not keep_self:
+            attr, top_indexes = attr.topk(reduce_size, dim=dim, sorted=False)  # b,obj_num,max_size,k_size
         else:
-            top_indexes = None
+            loop_mask = self.eye_mask_cache.cuda(self.device)
+            fake_attr = attr.masked_fill(loop_mask, 1000.)
+            _, top_indexes = fake_attr.topk(reduce_size, dim=dim, sorted=False)
+            attr = attr.gather(index=top_indexes, dim=-2)
         return attr, top_indexes
 
     def _attr_process(self, attr: torch.Tensor):
@@ -381,22 +303,16 @@ class Edge(EdgeInit):
 
     def load_spatial_feats(self, node_boxes):
         node_size = (node_boxes[:, 2:] - node_boxes[:, :2])
-        node_centre = node_boxes[:, :2] + 0.5 * node_size  # b*k, 2
+        # node_centre = node_boxes[:, :2] + 0.5 * node_size  # b*k, 2
         node_i_box, node_j_box = self.load_node_attr(node_boxes)
         node_i_size, node_j_size = self.load_node_attr(node_size)
 
         node_dist = node_i_box - node_j_box
         node_dist = node_dist / node_j_size
         node_scale = node_i_size / node_j_size
-        node_mul = node_i_size[:, 0] * node_j_size[:, 1] / (node_j_size[:, 0] * node_j_size[:, 1])
-        node_sum = node_i_size[:, 0] * node_j_size[:, 1] / (node_j_size[:, 0] * node_j_size[:, 1])
-
-        node_dists = node_intersect(self.node.coords, 'minus')  # b, n, n, 4
-        node_dists = node_dists / torch.cat((node_size, node_size), dim=-1).unsqueeze(dim=2)
-        node_scale = node_intersect(node_size, 'divide')
-        node_mul = node_intersect(node_size[:, :, 0].unsqueeze(-1)*node_size[:, :, 1].unsqueeze(-1), 'divide')
-        node_sum = node_intersect(node_size[:, :, 0].unsqueeze(-1)+node_size[:, :, 1].unsqueeze(-1), 'divide')
-        return torch.cat((node_dists, node_scale, node_mul, node_sum), dim=-1)
+        node_mul = (node_i_size[:, 0] * node_j_size[:, 1]) / (node_j_size[:, 0] * node_j_size[:, 1])
+        node_sum = (node_i_size[:, 0] * node_j_size[:, 1]) / (node_j_size[:, 0] + node_j_size[:, 1])
+        return torch.cat((node_dist, node_scale, node_mul, node_sum), dim=-1)
 
     def load_feats(self, node_feats, n2n_method):
         node_i_feats, node_j_feats = node_feats[self.node_i_ids], node_feats[self.node_j_ids]

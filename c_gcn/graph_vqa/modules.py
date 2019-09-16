@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 from .graph import Graph, EdgeAttr, EdgeNull, EdgeAddLoop, EdgeMirror, EdgeTopK, Edge
-from pt_pack import Linear, Null, node_intersect, str_split, try_set_attr
+from pt_pack import Linear, Null, node_intersect, str_split, Norm1D, Act
 import numpy as np
 
 
@@ -20,28 +20,23 @@ class FilmFusion(nn.Module):
                  act_type: str = 'relu'
                  ):
         super().__init__()
-        self.cond_proj_l = nn.Sequential(
-            nn.utils.weight_norm(nn.Linear(cond_dim, out_dim*2)),
-            # nn.ReLU()
+        self.cond_proj_l = nn.utils.weight_norm(nn.Linear(cond_dim, out_dim*2))
+        self.linear_l = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.utils.weight_norm(nn.Linear(in_dim, out_dim, bias=False)),
+            Norm1D(out_dim, norm_type, norm_affine=False)
         )
         self.drop_l = nn.Dropout(dropout)
-        self.film_l = Linear(in_dim, out_dim, norm_type=norm_type, norm_affine=False,
-                             orders=('linear', 'norm', 'cond'))
-        if act_type is 'relu':
-            self.relu_l = nn.ReLU()
-        elif act_type is 'none':
-            self.relu_l = Null()
-        elif act_type is 'tanh':
-            self.relu_l = nn.Tanh()
-        else:
-            raise NotImplementedError()
+        self.act_l = Act(act_type)
 
-    def forward(self, x, cond):
+    def forward(self, x, cond, batch_ids):
         gamma, beta = self.cond_proj_l(cond).chunk(2, dim=-1)
-        gamma += 1.
-        x = self.drop_l(x)
-        x = self.film_l(x, gamma, beta)
-        x = self.relu_l(x)
+        gamma += 1.  # b, c
+        gamma = gamma[batch_ids]
+        beta = beta[batch_ids]
+        x = self.linear_l(x)
+        x = x * gamma + beta
+        x = self.act_l(x)
         return x
 
 
@@ -60,26 +55,28 @@ class EdgeFeatFilm(nn.Module):
             nn.utils.weight_norm(nn.Linear(node_dim, edge_dim)),
             nn.ReLU()
         )
-        edge_in_dim = edge_dim+8 if n2n_method in ('sum', 'mul', 'max') else edge_dim*2+8
+        edge_hid_dim = edge_dim+8 if n2n_method in ('sum', 'mul', 'max') else edge_dim*2+8
+        self.edge_hid_dim = edge_hid_dim
         # self.edge_proj_l = nn.Sequential(
         #     nn.utils.weight_norm(nn.Linear(edge_in_dim, edge_dim)),
         #     nn.ReLU()
         # )
         self.drop_l = nn.Dropout(dropout)
-        self.film_l = FilmFusion(edge_in_dim, cond_dim, edge_dim, act_type='relu')
+        self.film_l = FilmFusion(edge_hid_dim, cond_dim, edge_dim, act_type='relu')
 
         self.node_dim = node_dim
 
     def forward(self, graph: Graph):
+        node, edge = graph.node, graph.edge
         if self.node_dim % 512 == 4:
-            coord_feats = torch.cat(graph.node.size_center, dim=-1)
+            coord_feats = torch.cat(node.size_center, dim=-1)
             node_feats = self.drop_l(graph.node_feats)
             node_feats = torch.cat((node_feats, coord_feats), dim=-1)
         else:
             node_feats = self.drop_l(graph.node_feats)
         node_feats = self.node_proj_l(node_feats)
 
-        node_i_feats, node_j_feats = node_feats[graph.edge.node_i_ids], node_feats[graph.edge.node_j_ids]
+        node_i_feats, node_j_feats = node_feats[edge.node_i_ids], node_feats[edge.node_j_ids]
         if self.n2n_method == 'cat':
             joint_feats = node_i_feats + node_j_feats
         elif self.n2n_method == 'mul':
@@ -87,24 +84,10 @@ class EdgeFeatFilm(nn.Module):
         else:
             raise NotImplementedError()
 
-        node_i_boxes, node_j_boxes = graph.node.boxes[graph.edge.node_i_ids], graph.node.boxes[graph.edge.node_j_ids]
-        node_size, node_centre = graph.node.size_center
-        node_dists = node_intersect(self.node.coords, 'minus')  # b, n, n, 4
-        node_dists = node_dists / torch.cat((node_size, node_size), dim=-1).unsqueeze(dim=2)
-        node_scale = node_intersect(node_size, 'divide')
-        node_mul = node_intersect(node_size[:, :, 0].unsqueeze(-1) * node_size[:, :, 1].unsqueeze(-1), 'divide')
-        node_sum = node_intersect(node_size[:, :, 0].unsqueeze(-1) + node_size[:, :, 1].unsqueeze(-1), 'divide')
-        return torch.cat((node_dists, node_scale, node_mul, node_sum), dim=-1)
-
-        joint_feats = node_intersect(node_feats, method=self.n2n_method)
-        joint_feats = torch.cat((joint_feats, graph.edge.spatial_feats()), dim=-1).view(batch_num*node_num*node_num, -1)
-
-        joint_feats = graph.edge.attr_process(joint_feats)
-        # joint_feats = self.edge_proj_l(joint_feats)
-        edge_num, o_c = joint_feats.shape
-
-        edge_feats = self.film_l(joint_feats.view(batch_num, -1, o_c), graph.cond_feats)
-        return edge_feats.view(edge_num, -1)
+        joint_feats = torch.cat((joint_feats, edge.load_spatial_feats(node.boxes)), dim=-1)
+        edge_batch_ids = node.batch_ids[edge.node_j_ids]
+        edge_feats = self.film_l(joint_feats, graph.cond_feats, edge_batch_ids)
+        return edge_feats
 
     def compute_pseudo(self, graph: Graph):
         node_size, node_centre = graph.node.size_center
@@ -508,11 +491,8 @@ class EdgeWeightLayer(nn.Module):
         edge_feats = graph.edge.edge_attrs['feats']
         edge_logits = EdgeAttr('logits', logit_l(edge_feats.value), edge_feats.op)
 
-        mirror_op = EdgeMirror(edge_feats.op, 'mirror')
-        edge_logits = mirror_op.attr_process(edge_logits)
-
         graph.edge.edge_attrs['logits'] = edge_logits
-        edge_weights = mirror_op.norm(edge_logits.value, self.norm_method)
+        edge_weights = edge_logits.op.norm(edge_logits.value, self.norm_method)
 
         topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=True)
         topk_weights = topk_op.by_attr.view(-1, topk_op.by_attr.shape[-1])

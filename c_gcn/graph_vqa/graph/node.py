@@ -18,14 +18,17 @@ class Node(object):
         self.logit_layers = {}
         self.mask = None
         self.device = node_feats.device
+        self.min_node_num = self.node_num if node_valid_nums is None else node_valid_nums.min().item()
         if self.valid_nums is not None:
             self.mask = self.node_num_cache.cuda(self.device) < self.valid_nums[:, None]
             self.feats = node_feats[self.mask]
             self.boxes = node_boxes[self.mask]
+            self.batch_ids = self.batch_id_cache.cuda(self.device)[self.mask]
         else:
             self.mask = self.mask_cache.cuda(self.device)
             self.feats = node_feats.view(-1, self.feat_num)
             self.boxes = node_boxes.view(-1, 4)
+            self.batch_ids = self.batch_id_cache.cuda(self.device).view(-1)
         self.old2new_map = self.old2new_cache.cuda(self.device)
         self.old2new_map[self.mask.view(-1)] = torch.arange(self.mask.sum().item(), device=self.device)
 
@@ -34,6 +37,13 @@ class Node(object):
         key = f'old2new_{self.batch_num}_{self.node_num}'
         if key not in self.caches:
             self.caches[key] = torch.full((self.batch_num*self.node_num, ), fill_value=-1).long()
+        return self.caches[key]
+
+    @property
+    def batch_id_cache(self):
+        key = f'batch_id_{self.batch_num}_{self.node_num}'
+        if key not in self.caches:
+            self.caches[key] = torch.arange(self.batch_num).expand(-1, self.node_num).contiguous()
         return self.caches[key]
 
     @property
