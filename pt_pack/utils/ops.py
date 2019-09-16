@@ -3,7 +3,8 @@ import torch
 import math
 
 
-__all__ = ['to_edge_idx', 'tri_mask', 'tri_index', 'is_same', 'node_intersect', 'edge_filter', 'edge_select']
+__all__ = ['to_edge_idx', 'tri_mask', 'tri_index', 'is_same', 'node_intersect', 'edge_filter', 'edge_select',
+           'masked_softmax']
 
 
 def to_edge_idx(top_id, k=None):
@@ -126,6 +127,13 @@ def edge_select(edge_prob: torch.Tensor, edge_num, filter_ids, method='full'):
         raise NotImplementedError()
     edge_ids = edge_ids_dissovle_batch(edge_ids, k)
     return edge_ids, edge_weight.view(-1)
+
+
+def masked_softmax(attr, mask, dim=-1):
+    exps = attr.exp()
+    exps = exps.masked_fill(mask, 0.)
+    sums = exps.sum(dim, keepdim=True) + 1e-5
+    return exps / sums
 
 
 if __name__ == '__main__':
