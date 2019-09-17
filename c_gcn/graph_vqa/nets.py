@@ -141,12 +141,14 @@ class CondGraphVqaNet(LayerNet):
 
     def forward(self, obj_feats, obj_coord, q_feats):
         graph = Graph(obj_feats, obj_coord)
+        conv_layer_idx = 0
         for idx, layer in enumerate(self.layers):
-            if not isinstance(q_feats, list):
+            if not isinstance(q_feats, (list, tuple)):
                 graph.cond_feats = q_feats
             else:
                 if 'conv' in layer.__class__.__name__.lower():
-                    graph.cond_feats = q_feats[idx-1]
+                    graph.cond_feats = q_feats[conv_layer_idx]
+                    conv_layer_idx += 1
             graph.edge.clear_ops()
             graph = layer(graph)
         return graph
