@@ -53,7 +53,6 @@ class GraphLinearLayer(Layer):
         return graph
 
 
-
 class CondGraphConvLayer(Layer):
     prefix = 'graph_conv_layer'
 
@@ -73,8 +72,7 @@ class CondGraphConvLayer(Layer):
     def forward(self, graph: Graph):
         graph = self.graph_learner_l(graph)
         graph = self.graph_conv_l(graph)
-        # graph.calc_node_weights()
-        graph.feats.append(graph.pooling_feats(self.params['pool']))
+        graph.pool_feats(self.params['pool'])
         return graph
 
 
@@ -122,7 +120,7 @@ class GraphConvLayer(Layer):
     def forward(self, graph):
         graph = self.graph_learner_l(graph)
         graph = self.graph_conv_l(graph)
-        graph.feats.append(graph.pooling_feats(self.pool_method))
+        graph.feats.append(graph.pool_feats(self.pool_method))
         return graph
 
 
@@ -150,7 +148,7 @@ class CgsGraphConvLayer(Layer):
         graph = self.edge_learner_l(graph)
         for conv_l in self.conv_layers:
             graph = conv_l(graph)
-        graph.feats.append(graph.pooling_feats('max'))
+        graph.feats.append(graph.pool_feats('max'))
         return graph
 
 

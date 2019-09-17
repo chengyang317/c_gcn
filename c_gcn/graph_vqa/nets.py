@@ -134,15 +134,13 @@ class CondGraphVqaNet(LayerNet):
     prefix = 'graph_vqa_net'
 
     def __init__(self,
-                 layers,
-                 filter_method: str = 'tri_u',
+                 layers
                  ):
         super().__init__(layers)
-        self.filter_method = filter_method
         self.reset_parameters()
 
     def forward(self, obj_feats, obj_coord, q_feats):
-        graph = Graph(obj_feats, obj_coord, filter_method=self.filter_method)
+        graph = Graph(obj_feats, obj_coord)
         for idx, layer in enumerate(self.layers):
             if not isinstance(q_feats, list):
                 graph.cond_feats = q_feats
@@ -161,7 +159,6 @@ class CondGraphVqaNet(LayerNet):
         try_set_attr(params, f'{cls.prefix_name()}_layer_out_dims', (1024,))
         try_set_attr(params, f'{cls.prefix_name()}_layer_kernel_sizes', (8,))
         try_set_attr(params, f'{cls.prefix_name()}_layer_reduce_sizes', (16,))
-        try_set_attr(params, f'{cls.prefix_name()}_filter_method', 'not_eye')
 
 
 class ResGraphVqaNet(LayerNet):

@@ -42,8 +42,6 @@ init_params = {
     'model_q_net_cls': 'cgs_graph_q_net',
     'graph_q_net_dropout': 0.2,
     # 'graph_q_net_module_num': 2,
-    # 'graph_vqa_net_filter_method': 'full',
-    'graph_vqa_net_filter_method': 'not_eye',
     'graph_vqa_net_layer_names': ('graph_linear_layer',
                                   'cond_graph_conv_layer',
                                   'cond_graph_conv_layer',
@@ -51,7 +49,7 @@ init_params = {
                                   # 'cond_graph_conv_layer',
                                   'cond_graph_cls_layer'
                                   ),
-    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 2 + (1024*2,),
+    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 2 + (1024*4,),
     'graph_vqa_net_layer_cond_dims': (1024, )*11,
     'graph_vqa_net_layer_edge_dims': (512, )*11,
     'graph_vqa_net_layer_out_dims': (1024,) * 3 + (3001, ),
@@ -59,12 +57,12 @@ init_params = {
                                     '{'
                                     '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
                                     '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
-                                    '"pool": "weight^max"'
+                                    '"pool": "weight^mix"'
                                     '}',
                                     '{'
                                     '"edge": {"feat": "cat^film", "weight": "softmax^share^8"},'
                                     '"conv": {"feat": "none", "param": "share", "node": "film^sum", "weight": "node^share^sigmoid"},'
-                                    '"pool": "weight^max"'
+                                    '"pool": "weight^mix"'
                                     '}',
                                     # '{'
                                     # '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'

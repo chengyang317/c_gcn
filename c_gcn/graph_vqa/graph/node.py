@@ -23,14 +23,15 @@ class Node(object):
             self.mask = self.node_num_cache.cuda(self.device) < self.valid_nums[:, None]
             self.feats = node_feats[self.mask]
             self.boxes = node_boxes[self.mask]
-            self.batch_ids = self.batch_id_cache.cuda(self.device)[self.mask]
+            self.batch_ids = self.batch_ids_cache.cuda(self.device)[self.mask]
         else:
             self.mask = self.mask_cache.cuda(self.device)
             self.feats = node_feats.view(-1, self.feat_num)
             self.boxes = node_boxes.view(-1, 4)
-            self.batch_ids = self.batch_id_cache.cuda(self.device).view(-1)
+            self.batch_ids = self.batch_ids_cache.cuda(self.device).view(-1)
+        self.node_total_num = self.batch_num * self.node_num if node_valid_nums is None else node_valid_nums.sum().item()
         self.old2new_map = self.old2new_cache.cuda(self.device)
-        self.old2new_map[self.mask.view(-1)] = torch.arange(self.mask.sum().item(), device=self.device)
+        self.old2new_map[self.mask.view(-1)] = torch.arange(self.node_total_num, device=self.device)
 
     @property
     def old2new_cache(self):
@@ -40,10 +41,10 @@ class Node(object):
         return self.caches[key]
 
     @property
-    def batch_id_cache(self):
+    def batch_ids_cache(self):
         key = f'batch_id_{self.batch_num}_{self.node_num}'
         if key not in self.caches:
-            self.caches[key] = torch.arange(self.batch_num).expand(-1, self.node_num).contiguous()
+            self.caches[key] = torch.arange(self.batch_num)[:, None].expand(-1, self.node_num).contiguous()
         return self.caches[key]
 
     @property
@@ -75,7 +76,7 @@ class Node(object):
     @property
     def size_center(self):
         boxes = self.boxes
-        node_size = (boxes[:, :, 2:] - boxes[:, :, :2])
-        node_centre = boxes[:, :, :2] + 0.5 * node_size  # b, k, 2
+        node_size = (boxes[:, 2:] - boxes[:, :2])
+        node_centre = boxes[:, :2] + 0.5 * node_size  # b, k, 2
         return node_size, node_centre
 

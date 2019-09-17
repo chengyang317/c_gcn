@@ -1,9 +1,10 @@
 # coding=utf-8
 import torch
 import torch.nn as nn
-from .graph import Graph, EdgeAttr, EdgeNull, EdgeAddLoop, EdgeMirror, EdgeTopK, Edge
-from pt_pack import Linear, Null, node_intersect, str_split, Norm1D, Act
+from .graph import Graph, EdgeAttr, EdgeNull, EdgeTopK, Edge
+from pt_pack import Linear, node_intersect, str_split, Norm1D, Act
 import numpy as np
+import torch_scatter as ts
 
 
 __all__ = ['EdgeFeatLayer', 'EdgeWeightLayer', 'GraphClsFilm', 'NodeWeightLayer', 'NodeFeatLayer', 'EdgeParamLayer',
@@ -78,7 +79,7 @@ class EdgeFeatFilm(nn.Module):
 
         node_i_feats, node_j_feats = node_feats[edge.node_i_ids], node_feats[edge.node_j_ids]
         if self.n2n_method == 'cat':
-            joint_feats = node_i_feats + node_j_feats
+            joint_feats = torch.cat((node_i_feats, node_j_feats), dim=-1)
         elif self.n2n_method == 'mul':
             joint_feats = node_i_feats * node_j_feats
         else:
@@ -218,7 +219,7 @@ class GraphClsFilm(nn.Module):
         self.method = method
 
     def forward(self, graph: Graph):
-        feats = self.film_l(graph.pooling_feats(self.method), graph.cond_feats)
+        feats = self.film_l(graph.pool_feats(self.method), graph.cond_feats)
         logits = self.linear_l(feats)
         return logits
 
@@ -286,7 +287,7 @@ class GraphClsRnn(nn.Module):
         self.method = method
 
     def forward(self, graph: Graph):
-        graph_feats = torch.stack(graph.feats, dim=1)
+        graph_feats = torch.stack(graph.layer_feats, dim=1)
         outs, feats = self.rnn_l(graph_feats, self.q_proj_l(graph.cond_feats).unsqueeze(0))
         logits = self.linear_l(feats.squeeze())
         return logits
@@ -368,10 +369,9 @@ class EdgeParamLayer(nn.Module):
             graph.edge.param_layers[self.layer_key] = self.param_l
 
         edge_feats = graph.edge_attrs['feats']
-        edge_params = EdgeAttr('params', param_l(edge_feats.value), edge_feats.op)  # has been processed by remove op
-
         edge_weights = graph.edge_attrs['weights']
-        edge_params = edge_weights.op.attr_process(edge_params)
+        edge_feats = edge_weights.op.attr_process(edge_feats)
+        edge_params = EdgeAttr('params', param_l(edge_feats.value), edge_feats.op)  # has been processed by remove op
         graph.edge.edge_attrs['params'] = edge_params
         return graph
 
@@ -405,10 +405,6 @@ class NodeFeatLayer(nn.Module):
         self.act_l = nn.ReLU()
         self.use_gin = use_gin
         self.norm_l = lambda x: x
-        # self.norm_l = nn.LayerNorm([out_dim])
-        # self.norm_l = nn.InstanceNorm1d(out_dim)
-        # self.norm_l = nn.LayerNorm([36, out_dim])
-        # self.norm_l = nn.BatchNorm1d(out_dim)
         if self.use_gin:
             self.eps = torch.nn.Parameter(torch.zeros(out_dim))
 
@@ -417,6 +413,7 @@ class NodeFeatLayer(nn.Module):
         return f'{self.node_dim}_{self.cond_dim}'
 
     def forward(self, graph: Graph):
+        node, edge = graph.node, graph.edge
         feat_l = self.feat_l or graph.node.feat_layers[self.layer_key]
         if self.layer_key not in graph.node.feat_layers:
             graph.node.feat_layers[self.layer_key] = feat_l
@@ -428,36 +425,22 @@ class NodeFeatLayer(nn.Module):
         else:
             node_feats = self.drop_l(graph.node_feats)
         if feat_l._get_name() == 'FilmFusion':
-            node_feats = feat_l(node_feats, graph.cond_feats)
+            node_feats = feat_l(node_feats, graph.cond_feats, node.batch_ids)
         else:
             node_feats = feat_l(node_feats)
 
         edge_weights = graph.edge_attrs['weights'].value * graph.edge_attrs['params'].value
         last_op = graph.edge_attrs['weights'].op
-
-        if last_op.is_loop:
-            if self.use_gin:
-                edge_weights[last_op.loop_mask()] += 1.0
-            # if self.use_gin:
-            #     edge_weights[last_op.loop_mask()] = 1.0 + self.eps
-
-        b_num, n_num, c_num = node_feats.shape
-        edge_weights = edge_weights.view(b_num, n_num, -1, edge_weights.shape[-1])
-        node_j_feats = node_feats.view(b_num * n_num, c_num)[last_op.coords[1]].view(b_num, n_num, -1, c_num)
-        nb_feats = edge_weights * node_j_feats
-        nb_feats = nb_feats.sum(dim=2)
-
-        if not last_op.is_loop:
-            if self.use_gin:
-                node_feats = node_feats * (1. + self.eps[None, None, :])
-            node_feats = node_feats + nb_feats
-        else:
-            node_feats = nb_feats
-
-        # node_feats = self.act_l(self.norm_l(node_feats.view(-1, self.out_dim, 1))).view(b_num, n_num, self.out_dim)
+        if self.use_gin:
+            edge_weights[last_op.loop_mask()] += 1.0
+        # if self.use_gin:
+        #     edge_weights[last_op.loop_mask()] = 1.0 + self.eps
+        node_j_feats = node_feats[last_op.node_j_ids]
+        node_j_feats = node_j_feats * edge_weights
+        nb_feats = ts.scatter_add(node_j_feats, last_op.node_i_ids, dim=0)
+        node_feats = nb_feats
         node_feats = self.act_l(self.norm_l(node_feats))
-        # node_feats = self.act_l(self.norm_l(node_feats.transpose(1, 2))).transpose(1, 2)
-        graph.node.update_feats(node_feats)
+        node.update_feats(node_feats)
         return graph
 
 
@@ -495,7 +478,7 @@ class EdgeWeightLayer(nn.Module):
         edge_weights = edge_logits.op.norm(edge_logits.value, self.norm_method)
 
         topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=True)
-        topk_weights = topk_op.by_attr.view(-1, topk_op.by_attr.shape[-1])
+        topk_weights = edge_weights[topk_op.select_ids]
         graph.edge.edge_attrs['weights'] = EdgeAttr('weights', topk_weights, topk_op)
         return graph
 
