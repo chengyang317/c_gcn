@@ -8,8 +8,8 @@ from c_gcn import graph_vqa
 init_params = {
     # env params
     'work_dir': './work_dir',
-    'proj_name': 'vqa2_cp_9.17',
-    'exp_name': 'lin_con_con_con_con_cls',
+    'proj_name': 'vqa2_cp_9.18',
+    'exp_name': 'lin_con_con_con_cls',
     'exp_version': 'exp',
 
     # trainer params
@@ -18,12 +18,12 @@ init_params = {
 
     # optimizer params
     'optimizer_type': 'Adam',
-    'optimizer_lr': 2e-4,
+    'optimizer_lr': 3e-4,
 
     # dataset params
     'dataset_cls': 'graph_vqa2_cp_dataset',
     # 'dataset_req_field_names': ('a_label_scores', 'q_labels'),
-    'dataset_batch_size': 40,
+    'dataset_batch_size': 64,
     'dataset_splits': ('train', 'test'),
     'dataset_shuffles': (True, False),
     'dataset_belongs': ('train', 'eval'),
@@ -48,34 +48,34 @@ init_params = {
                                   'cond_graph_conv_layer',
                                   'cond_graph_conv_layer',
                                   'cond_graph_conv_layer',
-                                  'cond_graph_conv_layer',
+                                  # 'cond_graph_conv_layer',
                                   'cond_graph_cls_layer'
                                   ),
-    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 4 + (1024*8,),
+    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 3 + (1024*6,),
     'graph_vqa_net_layer_cond_dims': (1024, )*11,
     'graph_vqa_net_layer_edge_dims': (512, )*11,
-    'graph_vqa_net_layer_out_dims': (1024,) * 5 + (3001, ),
+    'graph_vqa_net_layer_out_dims': (1024,) * 4 + (3001, ),
     'graph_vqa_net_layer_params': ('linear',
                                     '{'
-                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
+                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "all^linear^softmax"},'
                                     '"pool": "weight^mix"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
+                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "all^linear^softmax"},'
                                     '"pool": "weight^mix"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
+                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "all^linear^softmax"},'
                                     '"pool": "weight^mix"'
                                     '}',
-                                    '{'
-                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
-                                    '"pool": "weight^mix"'
-                                    '}',
+                                    # '{'
+                                    # '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
+                                    # '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
+                                    # '"pool": "weight^mix"'
+                                    # '}',
                                     'linear_cat'),
     'graph_vqa_net_layer_dropouts': (0.2,) * 11,
 

@@ -798,25 +798,34 @@ class NodeWeightLayer(nn.Module):
         if self.node_method == 'linear':
             node_logits = self.node_logit_l(graph.node_feats)
             graph.node.logit_layers[self.layer_key] = self.node_logit_l
-            node_weights = self.norm(node_logits)
         elif self.node_method == 'share':
             node_logits = graph.node.logit_layers[self.layer_key](graph.node_feats)
-            node_weights = self.norm(node_logits)
         elif self.node_method == 'inherit':
             node_weights = graph.node.weights
         else:
             raise NotImplementedError()
 
-        batch_num, node_num = graph.batch_num, graph.node_num
-        if self.weight_method == 'all':
-            edge_logits = graph.edge.edge_attrs['logits']
-            edge_weights = edge_logits.op.norm(edge_logits.value, 'softmax').view(batch_num, node_num, -1, 1)
-            node_j_weights = node_weights.view(-1, 1)[edge_logits.op.coords[1]].view(batch_num, node_num, -1, 1)
-            nb_weights = edge_weights * node_j_weights
-            nb_weights = nb_weights.sum(dim=2)
+        if self.node_method in ('linear', 'share'):
+            b_num, node_num = graph.batch_num, graph.node_num
+            if self.weight_method == 'all':
+                edge_logits = graph.edge.edge_attrs['logits']
+                edge_weights = edge_logits.op.norm(edge_logits.value, 'softmax').view(b_num, node_num, -1, 1)
+                node_j_logits = node_logits.view(-1, 1)[edge_logits.op.coords[1]].view(b_num, node_num, -1, 1)
+                nb_logits = edge_weights * node_j_logits
+                nb_logits = nb_logits.sum(dim=2)
+                node_logits = nb_logits
+            node_weights = self.norm(node_logits)
 
-            if not edge_logits.op.is_loop:
-                node_weights = node_weights * 0.5 + nb_weights * 0.5
+        # batch_num, node_num = graph.batch_num, graph.node_num
+        # if self.weight_method == 'all':
+        #     edge_logits = graph.edge.edge_attrs['logits']
+        #     edge_weights = edge_logits.op.norm(edge_logits.value, 'softmax').view(batch_num, node_num, -1, 1)
+        #     node_j_weights = node_weights.view(-1, 1)[edge_logits.op.coords[1]].view(batch_num, node_num, -1, 1)
+        #     nb_weights = edge_weights * node_j_weights
+        #     nb_weights = nb_weights.sum(dim=2)
+        #
+        #     if not edge_logits.op.is_loop:
+        #         node_weights = node_weights * 0.5 + nb_weights * 0.5
         graph.node.weights = node_weights
         return graph
 
