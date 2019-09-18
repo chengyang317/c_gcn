@@ -1,7 +1,8 @@
 import torch
 import collections
 from typing import Dict
-from pt_pack import node_intersect
+from pt_pack import node_intersect, is_nan
+from pt_pack.utils import is_inf
 import torch_scatter as ts
 
 
@@ -150,6 +151,11 @@ class EdgeInit(EdgeOp):
         node_i, node_j = node_i.cuda(self.device)[edge_mask], node_j.cuda(self.device)[edge_mask]  # k, k
         self.node_i_ids, self.node_j_ids = self.node.old2new_map[node_i], self.node.old2new_map[node_j]
         self.mask = edge_mask
+        if self.node_i_ids.max().item() != 2303:
+            print('node_i_ids max error')
+            print(f'node_i_ids max is {self.node_i_ids.max().item()}')
+        if self.node_j_ids.max().item() != 2303:
+            print('node_j_ids max error')
 
     def _attr_process(self, attr: torch.Tensor):
         attr = attr.view(-1, attr.shape[-1])
@@ -171,11 +177,25 @@ class EdgeTopK(EdgeOp):
     def op_process(self):
         last_op = self.last_op
         by_attr = last_op.reshape(self.by_attr, fill_value=-100.)
+        if is_nan(by_attr) or is_inf(by_attr):
+            print('by_attr is nan')
         top_ids = self.attr_topk(by_attr, -2, self.reduce_size, keep_self=self.keep_self)  # b, n_num, k, 1
         self.top_ids = top_ids.squeeze(-1)  # b, n_num, k
         select_ids = last_op.reshape(torch.arange(last_op.edge_num).cuda(self.device))
+        if is_nan(top_ids) or is_inf(top_ids):
+            print('top_ids is nan')
+
+        if is_inf(select_ids) or is_nan(select_ids):
+            print('dfljld')
         self.select_ids = select_ids.gather(index=top_ids, dim=-2).view(-1)
+        if is_nan(self.select_ids) or is_inf(self.select_ids):
+            print('dlfjljd')
         self.node_i_ids, self.node_j_ids = self._attr_process(last_op.node_i_ids), self._attr_process(last_op.node_j_ids)
+        if self.node_i_ids.max().item() != 2303:
+            print(f'node_i_ids max is {self.node_i_ids.max().item()}')
+            print('node_i_ids max error')
+        if self.node_j_ids.max().item() != 2303:
+            print('node_j_ids max error')
 
     def attr_topk(self, attr, dim, reduce_size, keep_self=False):
         """

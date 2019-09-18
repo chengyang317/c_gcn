@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 from .graph import Graph, EdgeAttr, EdgeNull, EdgeTopK, Edge
-from pt_pack import Linear, node_intersect, str_split, Norm1D, Act
+from pt_pack import Linear, node_intersect, str_split, Norm1D, Act, is_inf, is_nan
 import numpy as np
 import torch_scatter as ts
 
@@ -88,6 +88,8 @@ class EdgeFeatFilm(nn.Module):
         joint_feats = torch.cat((joint_feats, edge.load_spatial_feats(node.boxes)), dim=-1)
         edge_batch_ids = node.batch_ids[edge.node_j_ids]
         edge_feats = self.film_l(joint_feats, graph.cond_feats, edge_batch_ids)
+        if is_inf(edge_feats) or is_nan(edge_feats):
+            print('edge feats is nan or isinf')
         return edge_feats
 
     def compute_pseudo(self, graph: Graph):
@@ -437,6 +439,8 @@ class NodeFeatLayer(nn.Module):
         #     edge_weights[last_op.loop_mask()] = 1.0 + self.eps
         node_j_feats = node_feats[last_op.node_j_ids]
         node_j_feats = node_j_feats * edge_weights
+        if is_nan(last_op.node_i_ids) or is_inf(last_op.node_i_ids) > 0:
+            print('node_j_feats is nan or inf')
         nb_feats = ts.scatter_add(node_j_feats, last_op.node_i_ids, dim=0)
         node_feats = nb_feats
         node_feats = self.act_l(self.norm_l(node_feats))
@@ -476,6 +480,9 @@ class EdgeWeightLayer(nn.Module):
 
         graph.edge.edge_attrs['logits'] = edge_logits
         edge_weights = edge_logits.op.norm(edge_logits.value, self.norm_method)
+
+        if is_nan(edge_weights) or is_inf(edge_weights):
+            print('edge_weights is nan or inf')
 
         topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=True)
         topk_weights = edge_weights[topk_op.select_ids]

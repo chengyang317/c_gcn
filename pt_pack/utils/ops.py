@@ -3,7 +3,8 @@ import torch
 import math
 
 
-__all__ = ['to_edge_idx', 'tri_mask', 'tri_index', 'is_same', 'node_intersect', 'edge_filter', 'edge_select']
+__all__ = ['to_edge_idx', 'tri_mask', 'tri_index', 'is_same', 'node_intersect', 'edge_filter', 'edge_select', 'is_nan',
+           'is_inf']
 
 
 def to_edge_idx(top_id, k=None):
@@ -126,6 +127,14 @@ def edge_select(edge_prob: torch.Tensor, edge_num, filter_ids, method='full'):
         raise NotImplementedError()
     edge_ids = edge_ids_dissovle_batch(edge_ids, k)
     return edge_ids, edge_weight.view(-1)
+
+
+def is_nan(x):
+    return True if torch.isnan(x).sum() > 0 else False
+
+
+def is_inf(x):
+    return True if torch.isinf(x).sum() > 0 else False
 
 
 if __name__ == '__main__':
