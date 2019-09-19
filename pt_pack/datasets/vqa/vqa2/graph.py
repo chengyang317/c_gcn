@@ -279,7 +279,7 @@ class GraphVqa2CpDataset(Dataset):
     def __init__(self,
                  data_dir: str = 'work_dir/data/vqa2',
                  split: str = 'train',
-                 req_field_names: List[str] = ('img_obj_feats', 'q_labels', 'q_lens', 'a_label_scores', 'a_label_counts'),
+                 req_field_names: List[str] = ('img_obj_feats', 'q_labels', 'q_lens', 'a_label_scores', 'a_label_counts', 'q_ids'),
                  seq_len: int = 14,
                  ):
         self._question_vocab = None

@@ -130,11 +130,19 @@ def edge_select(edge_prob: torch.Tensor, edge_num, filter_ids, method='full'):
 
 
 def is_nan(x):
-    return True if torch.isnan(x).sum() > 0 else False
+    num = torch.isnan(x).sum()
+    if num > 0:
+        print(f'nan num is {num}')
+        torch.save(x, 'is_nan.pt')
+    return True if num > 0 else False
 
 
 def is_inf(x):
-    return True if torch.isinf(x).sum() > 0 else False
+    num = torch.isinf(x).sum()
+    if num > 0:
+        print(f'inf num is {num}')
+        torch.save(x, 'is_inf.pt')
+    return True if num > 0 else False
 
 
 if __name__ == '__main__':

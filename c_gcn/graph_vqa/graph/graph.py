@@ -14,6 +14,7 @@ class Graph(object):
                  node_coords=None,
                  node_weights=None,
                  cond_feats=None,
+                 q_ids=None,
                  ):
         self.node = Node(self, node_feats, node_coords, node_weights)
         self.edge = Edge(self.node)

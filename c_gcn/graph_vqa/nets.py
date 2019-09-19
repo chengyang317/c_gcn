@@ -139,8 +139,8 @@ class CondGraphVqaNet(LayerNet):
         super().__init__(layers)
         self.reset_parameters()
 
-    def forward(self, obj_feats, obj_coord, q_feats):
-        graph = Graph(obj_feats, obj_coord)
+    def forward(self, obj_feats, obj_coord, q_feats, q_ids):
+        graph = Graph(obj_feats, obj_coord, q_ids=q_ids)
         conv_layer_idx = 0
         for idx, layer in enumerate(self.layers):
             if not isinstance(q_feats, (list, tuple)):

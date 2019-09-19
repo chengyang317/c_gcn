@@ -114,6 +114,7 @@ class EdgeOp(object):
             edge_attr = edge_attr.view(-1, 1)
         c_dim = edge_attr.size(-1)
         new_attr = edge_attr.new_full((self.batch_num, self.node_num, self.node_num, c_dim), fill_value)
+        # new_attr = new_attr.masked_fill(self.mask.unsqueeze(-1), edge_attr)
         new_attr[self.mask] = edge_attr
         return new_attr
 
@@ -150,6 +151,7 @@ class EdgeInit(EdgeOp):
         node_i, node_j = self.meshgrid_cache  # b, n, n
         node_i, node_j = node_i.cuda(self.device)[edge_mask], node_j.cuda(self.device)[edge_mask]  # k, k
         self.node_i_ids, self.node_j_ids = self.node.old2new_map[node_i], self.node.old2new_map[node_j]
+
         self.mask = edge_mask
         if self.node_i_ids.max().item() != 2303:
             print('node_i_ids max error')
@@ -176,12 +178,14 @@ class EdgeTopK(EdgeOp):
 
     def op_process(self):
         last_op = self.last_op
-        by_attr = last_op.reshape(self.by_attr, fill_value=-100.)
+        by_attr = last_op.reshape(self.by_attr.clone().detach(), fill_value=-100.)
         if is_nan(by_attr) or is_inf(by_attr):
             print('by_attr is nan')
         top_ids = self.attr_topk(by_attr, -2, self.reduce_size, keep_self=self.keep_self)  # b, n_num, k, 1
         self.top_ids = top_ids.squeeze(-1)  # b, n_num, k
-        select_ids = last_op.reshape(torch.arange(last_op.edge_num).cuda(self.device))
+        select_ids = last_op.reshape(torch.arange(last_op.edge_num).cuda(self.device), fill_value=-1)
+        if (select_ids == -1).sum() > 0:
+            print('select_ids is -1')
         if is_nan(top_ids) or is_inf(top_ids):
             print('top_ids is nan')
 
@@ -196,6 +200,7 @@ class EdgeTopK(EdgeOp):
             print('node_i_ids max error')
         if self.node_j_ids.max().item() != 2303:
             print('node_j_ids max error')
+        self.by_attr = None
 
     def attr_topk(self, attr, dim, reduce_size, keep_self=False):
         """
