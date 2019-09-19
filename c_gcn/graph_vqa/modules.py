@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 from .graph import Graph, EdgeAttr, EdgeNull, EdgeTopK, Edge
-from pt_pack import Linear, node_intersect, str_split, Norm1D, Act, is_inf, is_nan
+from pt_pack import Linear, node_intersect, str_split, Norm1D, Act
 import numpy as np
 import torch_scatter as ts
 
@@ -477,13 +477,8 @@ class EdgeWeightLayer(nn.Module):
             graph.edge.logit_layers[self.layer_key] = self.logit_l
         edge_feats = graph.edge.edge_attrs['feats']
         edge_logits = EdgeAttr('logits', logit_l(edge_feats.value), edge_feats.op)
-
         graph.edge.edge_attrs['logits'] = edge_logits
         edge_weights = edge_logits.op.norm(edge_logits.value, self.norm_method)
-
-        if is_nan(edge_weights) or is_inf(edge_weights):
-            print('edge_weights is nan or inf')
-
         topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=True)
         topk_weights = edge_weights[topk_op.select_ids]
         graph.edge.edge_attrs['weights'] = EdgeAttr('weights', topk_weights, topk_op)
