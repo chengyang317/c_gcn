@@ -110,7 +110,10 @@ class Checkpoint(PtBase):
 
     def after_epoch_train(self):
         trainer = self.controller.trainer
-        val_acc = trainer.running_messages['eval'][trainer.epoch_idx]['acc']['value']
+        try:
+            val_acc = trainer.running_messages['eval'][trainer.epoch_idx]['acc']['value']
+        except:
+            val_acc = 0
         self.save_checkpoint(trainer.epoch_idx, trainer.real_model, val_acc)
 
 

@@ -88,8 +88,6 @@ class EdgeFeatFilm(nn.Module):
         joint_feats = torch.cat((joint_feats, edge.load_spatial_feats(node.boxes)), dim=-1)
         edge_batch_ids = node.batch_ids[edge.node_j_ids]
         edge_feats = self.film_l(joint_feats, graph.cond_feats, edge_batch_ids)
-        if is_inf(edge_feats) or is_nan(edge_feats):
-            print('edge feats is nan or isinf')
         return edge_feats
 
     def compute_pseudo(self, graph: Graph):
@@ -439,8 +437,6 @@ class NodeFeatLayer(nn.Module):
         #     edge_weights[last_op.loop_mask()] = 1.0 + self.eps
         node_j_feats = node_feats[last_op.node_j_ids]
         node_j_feats = node_j_feats * edge_weights
-        if is_nan(last_op.node_i_ids) or is_inf(last_op.node_i_ids) > 0:
-            print('node_j_feats is nan or inf')
         nb_feats = ts.scatter_add(node_j_feats, last_op.node_i_ids, dim=0)
         node_feats = nb_feats
         node_feats = self.act_l(self.norm_l(node_feats))

@@ -101,6 +101,7 @@ class EdgeOp(object):
         self.next_ops = {}
 
     def norm(self, edge_attr, method):
+        edge_attr = edge_attr - edge_attr.max() / 2
         if method == 'softmax':
             exp = edge_attr.exp()
             sums = ts.scatter_add(exp, self.node_i_ids, dim=0)
@@ -255,7 +256,7 @@ class Edge(EdgeInit):
         node_i_size, node_j_size = self.map2edge_node(node_size)
 
         node_dist = node_i_box - node_j_box
-        node_dist = node_dist / node_j_size.repeat(1, 2)
+        node_dist = node_dist / node_i_size.repeat(1, 2)
         node_scale = node_i_size / node_j_size
         node_mul = (node_i_size[:, 0] * node_j_size[:, 1]) / (node_j_size[:, 0] * node_j_size[:, 1])
         node_sum = (node_i_size[:, 0] + node_j_size[:, 1]) / (node_j_size[:, 0] + node_j_size[:, 1])

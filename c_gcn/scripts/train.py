@@ -8,12 +8,13 @@ from c_gcn import graph_vqa
 init_params = {
     # env params
     'work_dir': './work_dir',
-    'proj_name': 'vqa2_cp_9.17',
+    'proj_name': 'vqa2_cp_9.19',
     'exp_name': 'lin_con_con_cls',
     'exp_version': 'exp',
 
     # trainer params
     'trainer_step2prog': 50,
+    'trainer_epoch2val': 1,
 
 
     # optimizer params
