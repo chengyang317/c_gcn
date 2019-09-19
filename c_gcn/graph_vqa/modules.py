@@ -740,6 +740,10 @@ class NodeWeightLayer(nn.Module):
         super().__init__()
         self.node_dim = node_dim
         self.edge_dim = edge_dim
+        self.method = method
+        if self.method == 'none':
+            self.node_logit_l = None
+            return
         self.weight_method, self.node_method, self.norm_method = str_split(method, '^')
         if self.node_method == 'linear':
             self.node_logit_l = nn.Sequential(
@@ -764,6 +768,8 @@ class NodeWeightLayer(nn.Module):
             raise NotImplementedError()
 
     def forward(self, graph: Graph):
+        if self.method == 'none':
+            return graph
         if self.node_method == 'linear':
             node_logits = self.node_logit_l(graph.node_feats)
             graph.node.logit_layers[self.layer_key] = self.node_logit_l
