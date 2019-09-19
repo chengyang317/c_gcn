@@ -6,8 +6,7 @@ from pt_pack import Linear, Null, node_intersect, str_split, try_set_attr
 import numpy as np
 
 
-__all__ = ['EdgeFeatLayer', 'EdgeWeightLayer', 'GraphClsFilm', 'NodeWeightLayer', 'NodeFeatLayer', 'EdgeParamLayer',
-           'NodePoolLayer']
+__all__ = ['EdgeFeatLayer', 'EdgeWeightLayer', 'NodeWeightLayer', 'NodeFeatLayer', 'EdgeParamLayer']
 
 
 class FilmFusion(nn.Module):
@@ -200,7 +199,7 @@ class EdgeFeatCat(nn.Module):
         return edge_feats.view(edge_num, -1)
 
 
-class GraphClsFilm(nn.Module):
+class ClsFilm(nn.Module):
     def __init__(self,
                  node_dim: int,
                  cond_dim: int,
@@ -225,7 +224,7 @@ class GraphClsFilm(nn.Module):
         return logits
 
 
-class GraphClsLinear(nn.Module):
+class ClsLinear(nn.Module):
     def __init__(self,
                  node_dim: int,
                  out_dim: int,
@@ -250,29 +249,7 @@ class GraphClsLinear(nn.Module):
         return logits
 
 
-# class GraphClsLinear(nn.Module):
-#     def __init__(self,
-#                  node_dim: int,
-#                  out_dim: int,
-#                  method: str,
-#                  dropout: float = 0.
-#                  ):
-#         super().__init__()
-#         self.linear_l = nn.Sequential(
-#             nn.Dropout(dropout),
-#             nn.utils.weight_norm(nn.Linear(node_dim, out_dim)),
-#             # nn.ReLU(),
-#             nn.utils.weight_norm(nn.Linear(out_dim, out_dim))
-#         )
-#         self.method = method
-#
-#     def forward(self, graph: Graph):
-#         graph_feats = graph.graph_feats(self.method)
-#         logits = self.linear_l(graph_feats)
-#         return logits
-
-
-class GraphClsRnn(nn.Module):
+class ClsRnn(nn.Module):
     def __init__(self,
                  node_dim: int,
                  cond_dim: int,
@@ -290,97 +267,37 @@ class GraphClsRnn(nn.Module):
         self.method = method
 
     def forward(self, graph: Graph):
-        graph_feats = torch.stack(graph.feats, dim=1)
+        graph_feats = torch.stack(graph.layer_feats, dim=1)
         outs, feats = self.rnn_l(graph_feats, self.q_proj_l(graph.cond_feats).unsqueeze(0))
         logits = self.linear_l(feats.squeeze())
         return logits
 
 
-class EdgeFeatLayer(nn.Module):
-    """
-    Calculate the features of edges. The inputs should contain the features of nodes, condition variables and previous
-    edges, however, now we only consider setting the features of nodes, condition variables as inputs.
-    """
+class ClsCgs(nn.Module):
     def __init__(self,
                  node_dim: int,
                  cond_dim: int,
-                 edge_dim: int,
-                 param: str,
-                 dropout: float = 0.
-                 ):
-        super().__init__()
-        self.param = param
-        if param in ('share', 'none'):
-            self.feat_l = None
-        else:
-            n2n_method, n2c_method = param.split('^')
-            if n2c_method == 'film':
-                self.feat_l = EdgeFeatFilm(node_dim, cond_dim, edge_dim, n2n_method, dropout)
-            elif n2c_method == 'mul':
-                self.feat_l = EdgeFeatMul(node_dim, cond_dim, edge_dim, n2n_method, dropout)
-            elif n2c_method == 'cat':
-                self.feat_l = EdgeFeatCat(node_dim, cond_dim, edge_dim, n2n_method, dropout)
-            else:
-                raise NotImplementedError()
-        self.node_dim = node_dim
-        self.cond_dim = cond_dim
-        self.edge_dim = edge_dim
-
-    @property
-    def layer_key(self):
-        return f'{self.node_dim}_{self.cond_dim}_{self.edge_dim}'
-
-    def forward(self, graph: Graph):
-        if self.param == 'none':
-            return graph
-        feat_l = self.feat_l or graph.edge.feat_layers[self.layer_key]
-        if self.layer_key not in graph.edge.feat_layers:
-            graph.edge.feat_layers[self.layer_key] = self.feat_l
-        edge_feats = feat_l(graph)  # m, c, has been processed by remove_op
-        graph.edge.edge_attrs['feats'] = EdgeAttr('feats', edge_feats, graph.edge.init_op())
-        return graph
-
-
-class EdgeParamLayer(nn.Module):
-    def __init__(self,
-                 edge_dim: int,
                  out_dim: int,
                  method: str,
                  dropout: float = 0.
                  ):
         super().__init__()
-        self.edge_dim = edge_dim
-        self.out_dim = out_dim
-        if method == 'share':
-            self.param_l = None
-        else:
-            self.param_l = nn.Sequential(
-                nn.Dropout(dropout),
-                nn.utils.weight_norm(nn.Linear(edge_dim, out_dim//2)),
-                nn.ReLU(),
-                nn.utils.weight_norm(nn.Linear(out_dim//2, out_dim)),
-                nn.Tanh()
-            )
-
-    @property
-    def layer_key(self):
-        return f'{self.edge_dim}_{self.out_dim}'
+        self.agg_method = method
+        self.logit_l = nn.Sequential(
+            nn.utils.weight_norm(nn.Linear(node_dim, out_dim)),
+            nn.ReLU(),
+            nn.utils.weight_norm(nn.Linear(out_dim, out_dim)),
+        )
+        self.relu_l = nn.ReLU()
 
     def forward(self, graph: Graph):
-        param_l = self.param_l or graph.edge.param_layers[self.layer_key]
-        if self.layer_key not in graph.edge.param_layers:
-            graph.edge.param_layers[self.layer_key] = self.param_l
-
-        edge_feats = graph.edge_attrs['feats']
-        edge_params = EdgeAttr('params', param_l(edge_feats.value), edge_feats.op)  # has been processed by remove op
-
-        edge_weights = graph.edge_attrs['weights']
-        edge_params = edge_weights.op.attr_process(edge_params)
-        graph.edge.edge_attrs['params'] = edge_params
-        return graph
+        feats = graph.graph_feats(self.agg_method)
+        feats = self.relu_l(graph.cond_feats) * feats
+        logits = self.logit_l(feats)
+        return logits
 
 
-class NodeFeatLayer(nn.Module):
+class CondNodeFeat(nn.Module):
     def __init__(self,
                  node_dim: int,
                  cond_dim: int,
@@ -470,125 +387,7 @@ class NodeFeatLayer(nn.Module):
         return graph
 
 
-class EdgeWeightLayer(nn.Module):
-    def __init__(self,
-                 edge_dim: int,
-                 method: str,
-                 dropout: float = 0.
-                 ):
-        super().__init__()
-        self.edge_dim = edge_dim
-        self.norm_method, kernel_size, self.reduce_size = str_split(method, '^')
-        if kernel_size == 'share':
-            self.logit_l = None
-        else:
-            self.logit_l = nn.Sequential(
-                nn.Dropout(dropout),
-                nn.utils.weight_norm(nn.Linear(edge_dim, edge_dim//2)),
-                nn.ReLU(),
-                nn.utils.weight_norm(nn.Linear(edge_dim//2, int(kernel_size)))
-            )
-
-    @property
-    def layer_key(self):
-        return f'{self.edge_dim}'
-
-    def forward(self, graph: Graph):
-        logit_l = self.logit_l or graph.edge.logit_layers[self.layer_key]
-        if self.layer_key not in graph.edge.logit_layers:
-            graph.edge.logit_layers[self.layer_key] = self.logit_l
-        edge_feats = graph.edge.edge_attrs['feats']
-        edge_logits = EdgeAttr('logits', logit_l(edge_feats.value), edge_feats.op)
-
-        mirror_op = EdgeMirror(edge_feats.op, 'mirror')
-        edge_logits = mirror_op.attr_process(edge_logits)
-
-        graph.edge.edge_attrs['logits'] = edge_logits
-        edge_weights = mirror_op.norm(edge_logits.value, self.norm_method)
-
-        topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=True)
-        topk_weights = topk_op.by_attr.view(-1, topk_op.by_attr.shape[-1])
-        graph.edge.edge_attrs['weights'] = EdgeAttr('weights', topk_weights, topk_op)
-        return graph
-
-
-class CondGraphLearner(nn.Module):
-    def __init__(self,
-                 node_dim: int,
-                 cond_dim: int,
-                 edge_dim: int,
-                 param,
-                 dropout: float = 0.
-                 ):
-        super().__init__()
-        feat_param, weight_param = param['feat'], param['weight']
-        self.edge_feat_l = EdgeFeatLayer(node_dim, cond_dim, edge_dim, feat_param, dropout)
-        self.edge_weight_l = EdgeWeightLayer(edge_dim, weight_param, dropout)
-
-    def forward(self, graph):
-        graph = self.edge_feat_l(graph)
-        graph = self.edge_weight_l(graph)
-        return graph
-
-
-class CondGraphConv(nn.Module):
-    def __init__(self,
-                 node_dim: int,
-                 cond_dim: int,
-                 edge_dim: int,
-                 out_dim: int,
-                 params: str,
-                 dropout: float = 0.
-                 ):
-        super().__init__()
-        self.params = params
-        feat_param, param_param, node_param, weight_param = (params[key] for key in ('feat', 'param', 'node', 'weight'))
-        self.edge_feat_l = EdgeFeatLayer(node_dim, cond_dim, edge_dim, feat_param, dropout)
-        self.edge_params_l = EdgeParamLayer(edge_dim, out_dim, param_param, dropout)
-        self.node_feat_l = NodeFeatLayer(node_dim, cond_dim, out_dim, node_param, dropout)
-        self.node_weight_l = NodeWeightLayer(out_dim, edge_dim, weight_param, dropout)
-
-    def forward(self, graph):
-        graph = self.edge_feat_l(graph)
-        graph = self.edge_params_l(graph)
-        graph = self.node_feat_l(graph)
-        graph = self.node_weight_l(graph)
-        return graph
-
-
-class CgsGraphLearner(nn.Module):
-    def __init__(self,
-                 node_dim: int,
-                 cond_dim: int,
-                 method: str,
-                 hid_dim: int = 512,
-                 dropout: float = 0.
-                 ):
-        super().__init__()
-        self.norm_method, self.reduce_size = str_split(method, '^')
-        self.joint_l = nn.Sequential(
-            nn.utils.weight_norm(nn.Linear(node_dim+cond_dim, hid_dim)),
-            nn.ReLU(),
-            nn.utils.weight_norm(nn.Linear(hid_dim, hid_dim)),
-            nn.ReLU()
-        )
-        self.drop_l = nn.Dropout(dropout)
-
-    def forward(self, graph: Graph):
-        node_feats = self.drop_l(torch.cat((graph.node_feats, graph.node.coords), dim=-1))
-        node_q_cat = torch.cat((node_feats, graph.cond_feats[:, None, :].repeat(1, graph.node_num, 1)), dim=-1)
-        joint_f = self.joint_l(node_q_cat)
-        edge_logits = torch.matmul(joint_f, joint_f.transpose(1, 2)).view(-1, 1)
-
-        edge_logits = graph.edge.mirror_op().attr_process(EdgeAttr('logits', edge_logits, EdgeNull()))
-        topk_op = graph.edge.topk_op(edge_logits.value, self.reduce_size)
-        topk_logits = topk_op.by_attr  # b, n, k, 1
-        edge_weights = topk_op.norm(topk_logits, self.norm_method)
-        graph.edge.edge_attrs['weights'] = EdgeAttr('weights', edge_weights.view(-1, edge_weights.shape[-1]), topk_op)
-        return graph
-
-
-class CgsGraphConv(nn.Module):
+class CgsNodeFeat(nn.Module):
     def __init__(self,
                  node_dim: int,
                  out_dim: int,
@@ -650,8 +449,10 @@ class CgsGraphConv(nn.Module):
         return EdgeAttr('gaussian_weights', weights, graph.edge.remove_loop_op())
 
     def forward(self, graph: Graph):
-        if self.node_dim % 1024 == 4:
-            node_feats = self.drop_l(torch.cat((graph.node_feats, graph.node.coords), dim=-1))
+        if self.node_dim % 512 == 4:
+            coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
+            node_feats = self.drop_l(graph.node_feats)
+            node_feats = torch.cat((node_feats, coord_feats), dim=-1)
         else:
             node_feats = self.drop_l(graph.node_feats)
         edge_dist_weights = self.gaussian_weight(graph)  # m, k
@@ -674,90 +475,203 @@ class CgsGraphConv(nn.Module):
         return graph
 
 
-# class NodeWeightLayer(nn.Module):
-#     def __init__(self,
-#                  node_dim: int,
-#                  edge_dim: int,
-#                  method: str,
-#                  dropout: float = 0.
-#                  ):
-#         super().__init__()
-#         self.node_dim = node_dim
-#         self.edge_dim = edge_dim
-#         self.norm_method, self.kernel_size, self.reduce_size = str_split(method, '^')
-#         if self.kernel_size == 'share':
-#             self.edge_logit_l = None
-#         elif self.kernel_size == 'inherit':
-#             self.edge_logit_l = None
-#         elif self.kernel_size == 'node':
-#             self.node_logit_l = nn.Sequential(
-#                 nn.Dropout(dropout),
-#                 nn.utils.weight_norm(nn.Linear(node_dim, node_dim // 2)),
-#                 nn.ReLU(),
-#                 nn.utils.weight_norm(nn.Linear(node_dim // 2, 1))
-#             )
-#         else:
-#             self.edge_logit_l = nn.Sequential(
-#                 nn.Dropout(dropout),
-#                 nn.utils.weight_norm(nn.Linear(edge_dim, edge_dim//2)),
-#                 nn.ReLU(),
-#                 nn.utils.weight_norm(nn.Linear(edge_dim//2, self.kernel_size))
-#             )
-#
-#     @property
-#     def layer_key(self):
-#         return f'{self.edge_dim}'
-#
-#     def forward(self, graph: Graph):
-#         if self.kernel_size == 'node':
-#             node_logit_l = self.node_logit_l or graph.node.logit_layers[self.layer_key]
-#             if graph.node.logit_layers.get(self.layer_key, None) is None:
-#                 graph.node.logit_layers[self.layer_key] = self.node_logit_l
-#             node_logits = node_logit_l(graph.node.feats)
-#         else:
-#             if self.kernel_size == 'inherit':
-#                 edge_logits = graph.edge_attrs['logits']
-#             elif self.kernel_size == 'node':
-#                 node_logit_l = self.node_logit_l or graph.node.logit_layers[self.layer_key]
-#                 if graph.node.logit_layers.get(self.layer_key, None) is None:
-#                     graph.node.logit_layers[self.layer_key] = self.node_logit_l
-#                     node_logits = node_logit_l(graph.node.feats)
-#             else:
-#                 edge_logit_l = self.edge_logit_l or graph.edge.logit_layers[self.layer_key]
-#                 if graph.edge.logit_layers.get(self.layer_key, None) is None:
-#                     graph.edge.logit_layers[self.layer_key] = self.edge_logit_l
-#
-#                 edge_feats = graph.edge_attrs['feats']
-#                 edge_logits = edge_logit_l(edge_feats.value)
-#                 edge_logits = EdgeAttr('logits', edge_logits, edge_feats.op)
-#                 mirror_op = EdgeMirror(edge_feats.op, 'mirror')
-#                 edge_logits = mirror_op.attr_process(edge_logits)
-#             node_logits = graph.edge.edge2node(edge_logits)
-#         graph.node.pool(node_logits, self.norm_method, self.reduce_size)
-#         return graph
-
-
-
-class NodePoolLayer(nn.Module):
+class EdgeFeatLayer(nn.Module):
+    """
+    Calculate the features of edges. The inputs should contain the features of nodes, condition variables and previous
+    edges, however, now we only consider setting the features of nodes, condition variables as inputs.
+    """
     def __init__(self,
-                 reduce_size: int,
+                 node_dim: int,
+                 cond_dim: int,
+                 edge_dim: int,
+                 param: str,
+                 dropout: float = 0.
                  ):
         super().__init__()
-        self.reduce_size = reduce_size
+        self.param = param
+        if param in ('share', 'none'):
+            self.feat_l = None
+        else:
+            n2n_method, n2c_method = param.split('^')
+            if n2c_method == 'film':
+                self.feat_l = EdgeFeatFilm(node_dim, cond_dim, edge_dim, n2n_method, dropout)
+            elif n2c_method == 'mul':
+                self.feat_l = EdgeFeatMul(node_dim, cond_dim, edge_dim, n2n_method, dropout)
+            elif n2c_method == 'cat':
+                self.feat_l = EdgeFeatCat(node_dim, cond_dim, edge_dim, n2n_method, dropout)
+            else:
+                raise NotImplementedError()
+        self.node_dim = node_dim
+        self.cond_dim = cond_dim
+        self.edge_dim = edge_dim
+
+    @property
+    def layer_key(self):
+        return f'{self.node_dim}_{self.cond_dim}_{self.edge_dim}'
 
     def forward(self, graph: Graph):
-        node_weights = graph.node_weights
-        node_weights, top_idx = node_weights.topk(self.reduce_size, dim=1, sorted=False)  # b,max_size,1
-        graph.node.feats = graph.node_feats.gather(index=top_idx, dim=1)
-        graph.node.coords = graph.node.coords.gather(index=top_idx, dim=1)
-        graph.node.weights = node_weights
-        graph.node.feats = graph.node_weights * graph.node_feats
+        if self.param == 'none':
+            return graph
+        feat_l = self.feat_l or graph.edge.feat_layers[self.layer_key]
+        if self.layer_key not in graph.edge.feat_layers:
+            graph.edge.feat_layers[self.layer_key] = self.feat_l
+        edge_feats = feat_l(graph)  # m, c, has been processed by remove_op
+        graph.edge.edge_attrs['feats'] = EdgeAttr('feats', edge_feats, graph.edge.init_op())
+        return graph
 
-        new_edge = Edge(graph.node, graph.edge.method)
-        new_edge.feat_layers = graph.edge.feat_layers
-        new_edge.logit_layers = graph.edge.logit_layers
-        new_edge.param_layers = graph.edge.param_layers
-        graph.edge = new_edge
+
+class EdgeWeightLayer(nn.Module):
+    def __init__(self,
+                 node_dim: int,
+                 cond_dim: int,
+                 edge_dim: int,
+                 method: str,
+                 dropout: float = 0.
+                 ):
+        super().__init__()
+        self.node_dim = node_dim
+        self.edge_dim = edge_dim
+        if '_' in method:
+            self.method, method = str_split(method, '_')
+        else:
+            self.method = 'cond'
+        self.method_param, self.norm_method, self.reduce_size = str_split(method, '^')
+        if self.method == 'cond':
+            if self.method_param == 'share':
+                self.logit_l = None
+            else:
+                self.logit_l = nn.Sequential(
+                    nn.Dropout(dropout),
+                    nn.utils.weight_norm(nn.Linear(edge_dim, edge_dim//2)),
+                    nn.ReLU(),
+                    nn.utils.weight_norm(nn.Linear(edge_dim//2, int(kernel_size)))
+                )
+        elif self.method == 'cgs':
+            if self.method_param == 'share':
+                self.logit_l = None
+            else:
+                self.logit_l = nn.Sequential(
+                    nn.utils.weight_norm(nn.Linear(node_dim + cond_dim, edge_dim)),
+                    nn.ReLU(),
+                    nn.utils.weight_norm(nn.Linear(edge_dim, edge_dim)),
+                    nn.ReLU()
+                )
+        else:
+            raise NotImplementedError()
+        self.drop_l = nn.Dropout(dropout)
+
+    @property
+    def layer_key(self):
+        return f'{self.edge_dim}'
+
+    def forward(self, graph: Graph):
+        logit_l = self.logit_l or graph.edge.logit_layers[self.layer_key]
+        if self.layer_key not in graph.edge.logit_layers:
+            graph.edge.logit_layers[self.layer_key] = self.logit_l
+        if self.method == 'cond':
+            edge_feats = graph.edge.edge_attrs['feats']
+            edge_logits = EdgeAttr('logits', logit_l(edge_feats.value), edge_feats.op)
+
+            mirror_op = EdgeMirror(edge_feats.op, 'mirror')
+            edge_logits = mirror_op.attr_process(edge_logits)
+
+            graph.edge.edge_attrs['logits'] = edge_logits
+            edge_weights = mirror_op.norm(edge_logits.value, self.norm_method)
+
+            topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk', keep_self=True)
+            topk_weights = topk_op.by_attr.view(-1, topk_op.by_attr.shape[-1])
+            graph.edge.edge_attrs['weights'] = EdgeAttr('weights', topk_weights, topk_op)
+        elif self.method == 'cgs':
+            if self.node_dim % 512 == 4:
+                coord_feats = torch.cat(graph.node.spatial_attr, dim=-1)
+                node_feats = self.drop_l(graph.node_feats)
+                node_feats = torch.cat((node_feats, coord_feats), dim=-1)
+            else:
+                node_feats = self.drop_l(graph.node_feats)
+            node_q_feats = torch.cat((node_feats, graph.cond_feats.unsqueeze(dim=1).expand(-1, graph.node_num, -1)), dim=-1)
+            joint_f = logit_l(node_q_feats)
+            edge_logits = torch.matmul(joint_f, joint_f.transpose(1, 2)).view(-1, 1)
+            edge_logits = EdgeAttr('logits', edge_logits, graph.edge.init_op())
+            mirror_op = EdgeMirror(edge_logits.op, 'mirror')
+            edge_logits = mirror_op.attr_process(edge_logits)
+
+            graph.edge.edge_attrs['logits'] = edge_logits
+            edge_weights = mirror_op.norm(edge_logits.value, self.norm_method)
+
+            topk_op = EdgeTopK(edge_weights, self.reduce_size, edge_logits.op, 'topk')
+            topk_weights = topk_op.by_attr.view(-1, topk_op.by_attr.shape[-1])
+            graph.edge.edge_attrs['weights'] = EdgeAttr('weights', topk_weights, topk_op)
+        else:
+            raise NotImplementedError()
+        return graph
+
+
+class EdgeParamLayer(nn.Module):
+    def __init__(self,
+                 edge_dim: int,
+                 out_dim: int,
+                 method: str,
+                 dropout: float = 0.
+                 ):
+        super().__init__()
+        self.edge_dim = edge_dim
+        self.out_dim = out_dim
+        self.method = method
+        if method in ('share', 'none'):
+            self.param_l = None
+        else:
+            self.param_l = nn.Sequential(
+                nn.Dropout(dropout),
+                nn.utils.weight_norm(nn.Linear(edge_dim, out_dim//2)),
+                nn.ReLU(),
+                nn.utils.weight_norm(nn.Linear(out_dim//2, out_dim)),
+                nn.Tanh()
+            )
+
+    @property
+    def layer_key(self):
+        return f'{self.edge_dim}_{self.out_dim}'
+
+    def forward(self, graph: Graph):
+        if self.method == 'none':
+            return graph
+        param_l = self.param_l or graph.edge.param_layers[self.layer_key]
+        if self.layer_key not in graph.edge.param_layers:
+            graph.edge.param_layers[self.layer_key] = self.param_l
+
+        edge_feats = graph.edge_attrs['feats']
+        edge_params = EdgeAttr('params', param_l(edge_feats.value), edge_feats.op)  # has been processed by remove op
+
+        edge_weights = graph.edge_attrs['weights']
+        edge_params = edge_weights.op.attr_process(edge_params)
+        graph.edge.edge_attrs['params'] = edge_params
+        return graph
+
+
+class NodeFeatLayer(nn.Module):
+    def __init__(self,
+                 node_dim: int,
+                 cond_dim: int,
+                 out_dim: int,
+                 method: str,
+                 dropout: float = 0.,
+                 ):
+        super().__init__()
+        self.method, self.method_param = str_split(method, '_')
+        if self.method == 'cond':
+            self.node_feat_l = CondNodeFeat(node_dim, cond_dim, out_dim, self.method_param, dropout)
+        elif self.method == 'cgs':
+            self.node_feat_l = nn.Sequential(
+                CgsNodeFeat(node_dim, out_dim, self.method_param, dropout=dropout),
+                CgsNodeFeat(out_dim, out_dim, self.method_param, use_graph_weights=False, dropout=dropout)
+            )
+
+    @property
+    def layer_key(self):
+        return f'{self.node_dim}_{self.cond_dim}'
+
+    def forward(self, graph: Graph):
+        graph = self.node_feat_l(graph)
         return graph
 
 
@@ -771,6 +685,10 @@ class NodeWeightLayer(nn.Module):
         super().__init__()
         self.node_dim = node_dim
         self.edge_dim = edge_dim
+        self.method = method
+        if method == 'none':
+            self.node_logit_l = None
+            return
         self.weight_method, self.node_method, self.norm_method = str_split(method, '^')
         if self.node_method == 'linear':
             self.node_logit_l = nn.Sequential(
@@ -795,6 +713,8 @@ class NodeWeightLayer(nn.Module):
             raise NotImplementedError()
 
     def forward(self, graph: Graph):
+        if self.method == 'none':
+            return graph
         if self.node_method == 'linear':
             node_logits = self.node_logit_l(graph.node_feats)
             graph.node.logit_layers[self.layer_key] = self.node_logit_l
@@ -828,6 +748,107 @@ class NodeWeightLayer(nn.Module):
         #         node_weights = node_weights * 0.5 + nb_weights * 0.5
         graph.node.weights = node_weights
         return graph
+
+
+class GraphLearner(nn.Module):
+    def __init__(self,
+                 node_dim: int,
+                 cond_dim: int,
+                 edge_dim: int,
+                 param,
+                 dropout: float = 0.
+                 ):
+        super().__init__()
+        feat_param, weight_param = param['feat'], param['weight']
+        self.edge_feat_l = EdgeFeatLayer(node_dim, cond_dim, edge_dim, feat_param, dropout)
+        self.edge_weight_l = EdgeWeightLayer(node_dim, cond_dim, edge_dim, weight_param, dropout)
+
+    def forward(self, graph):
+        graph = self.edge_feat_l(graph)
+        graph = self.edge_weight_l(graph)
+        return graph
+
+
+class GraphConv(nn.Module):
+    def __init__(self,
+                 node_dim: int,
+                 cond_dim: int,
+                 edge_dim: int,
+                 out_dim: int,
+                 params: str,
+                 dropout: float = 0.
+                 ):
+        super().__init__()
+        self.params = params
+        feat_param, param_param, node_param, weight_param = (params[key] for key in ('feat', 'param', 'node', 'weight'))
+        self.edge_feat_l = EdgeFeatLayer(node_dim, cond_dim, edge_dim, feat_param, dropout)
+        self.edge_params_l = EdgeParamLayer(edge_dim, out_dim, param_param, dropout)
+        self.node_feat_l = NodeFeatLayer(node_dim, cond_dim, out_dim, node_param, dropout)
+        self.node_weight_l = NodeWeightLayer(out_dim, edge_dim, weight_param, dropout)
+
+    def forward(self, graph):
+        graph = self.edge_feat_l(graph)
+        graph = self.edge_params_l(graph)
+        graph = self.node_feat_l(graph)
+        graph = self.node_weight_l(graph)
+        return graph
+
+
+class GraphPool(nn.Module):
+    def __init__(self,
+                 params: str
+                 ):
+
+        super().__init__()
+        self.params = params
+        self.pool_params, self.reduce_params = params.split('_')
+
+    def forward(self, graph):
+        if self.pool_params != 'none':
+            graph.pool_feats(self.pool_params)
+        if self.reduce_params == 'none':
+            return graph
+        reduce_size = int(self.reduce_params)
+        node_weights = graph.node_weights
+        node_weights, top_idx = node_weights.topk(reduce_size, dim=1, sorted=False)  # b,max_size,1
+        c_num = graph.node_feats.size(-1)
+        graph.node.feats = graph.node_feats.gather(index=top_idx.expand(-1, -1, c_num), dim=1)
+        graph.node.boxes = graph.node.boxes.gather(index=top_idx.expand(-1, -1, 4), dim=1)
+        graph.node.weights = node_weights
+        if graph.node.mask is not None:
+            new_mask = graph.node_mask.gather(index=top_idx, dim=1)
+            if (new_mask == False).sum() == 0:
+                graph.node._mask = None
+                graph.node.mask_nums = None
+            else:
+                graph.node._mask = new_mask
+        # graph.node.feats = graph.node_weights * graph.node_feats
+
+        new_edge = Edge(graph.node, graph.edge.method)
+        new_edge.feat_layers = graph.edge.feat_layers
+        new_edge.logit_layers = graph.edge.logit_layers
+        new_edge.param_layers = graph.edge.param_layers
+        graph.edge = new_edge
+        return graph
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

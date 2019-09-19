@@ -503,7 +503,7 @@ class GraphClsFilm(nn.Module):
     def forward(self, graph: Graph):
         gamma, beta = self.cond_proj_l(graph.cond_feats).chunk(2, dim=-1)
         gamma += 1.
-        node_feats = self.drop_l(graph.pooling_feats(self.method))
+        node_feats = self.drop_l(graph.pool_feats(self.method))
         feats = self.cond_l(node_feats, gamma, beta)
         logits = self.linear_l(feats)
         return logits

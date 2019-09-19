@@ -477,27 +477,6 @@ class Edge(EdgeInit):
         if self.feats is not None:
             self.feats = self.reshape(self.feats, True).gather(index=top_indexes, dim=2).view(-1, self.feat_dim)
 
-    def aggregate(self, node_feats, edge_weights: EdgeAttr, method='sum'):
-        add_op = EdgeAddLoop(edge_weights.op)
-        edge_weights = add_op.attr_process(edge_weights).value
-        b_num, n_num, c_num = node_feats.shape
-        node_j_feats = node_feats.view(b_num * n_num, c_num)[add_op.coords[1]]  # m, o_c
-        _, k_size = edge_weights.shape
-        if k_size == c_num:
-            weighted_feats = edge_weights * node_j_feats  # m, c_num
-        else:
-            weighted_feats = edge_weights[:, :, None] * node_j_feats[:, None, :]  # m, k_size, o_c
-        if method == 'sum':
-            node_k_feats = ts.scatter_add(weighted_feats, add_op.coords[0], dim=0)  # obj_num*b,k_size,o_c
-        elif method == 'max':
-            node_k_feats = ts.scatter_max(weighted_feats, add_op.coords[0], dim=0)[0]
-        elif method == 'mean':
-            node_k_feats = ts.scatter_mean(weighted_feats, add_op.coords[0], dim=0)
-        else:
-            raise NotImplementedError()
-        node_feats = node_k_feats.view(b_num, n_num, *weighted_feats.shape[1:])  # b, obj_num, out_dim or b, o_n, k_n, c
-        return node_feats.squeeze()
-
     def edge2node(self, attr: EdgeAttr, method='sum'):
         value = self.reshape(attr.value, dim_is_4=True)
         if method == 'sum':

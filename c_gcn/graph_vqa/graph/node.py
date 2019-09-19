@@ -60,29 +60,6 @@ class Node(object):
         node_centre = node_coord[:, :, :2] + 0.5 * node_size  # b, k, 2
         return node_size, node_centre
 
-    def pool(self, logits, norm_method, reduce_size=-1):
-        assert logits.shape[:2] == (self.batch_num, self.node_num)
-        if logits.shape[-1] != 1:
-            logits = logits.mean(dim=-1, keepdim=True)
-        logits, top_idx = EdgeTopK.attr_topk(logits, dim=1, reduce_size=reduce_size)
-        self.weights = self.norm(logits, norm_method)  # b, node_num, 1
-        if top_idx is not None:
-            self.feats = self.feats.gather(index=top_idx.expand(-1, -1, self.feats.shape[-1]), dim=1)
-            self.coords = self.coords.gather(index=top_idx.expand(-1, -1, self.coords.shape[-1]), dim=1)
-        self.feats = (self.weights + 1) * self.feats
-        return self
-
-    def logit2weight(self, norm_method, reduce_size=-1):
-        edge_logits = self.edge.logits
-        node_logits = self.edge.edge2node(edge_logits)  # b,n_num, k
-        node_logits, top_indexes = logit_reduce(node_logits, 1, reduce_size)
-        node_weights = logit_norm(node_logits, norm_method)
-        self.weights = node_weights.squeeze()  # b, n_num
-        if top_indexes is not None:
-            self.feats = self.feats.gather(index=top_indexes.expand(-1, -1, self.feats.shape[-1]), dim=1)
-            self.coords = self.coords.gather(index=top_indexes.expand(-1, -1, self.coords.shape[-1]), dim=1)
-        return node_weights
-
     def norm(self, attr, method):
         if method == 'softmax':
             ret_attr = attr.softmax(dim=-2)  # b, obj_num, n, k_size
