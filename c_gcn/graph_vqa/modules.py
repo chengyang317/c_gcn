@@ -283,8 +283,13 @@ class ClsCgs(nn.Module):
                  ):
         super().__init__()
         self.agg_method = method
+        self.proj_l = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.utils.weight_norm(nn.Linear(node_dim, cond_dim)),
+            nn.ReLU(),
+        )
         self.logit_l = nn.Sequential(
-            nn.utils.weight_norm(nn.Linear(node_dim, out_dim)),
+            nn.utils.weight_norm(nn.Linear(cond_dim, out_dim)),
             nn.ReLU(),
             nn.utils.weight_norm(nn.Linear(out_dim, out_dim)),
         )
@@ -292,6 +297,7 @@ class ClsCgs(nn.Module):
 
     def forward(self, graph: Graph):
         feats = graph.graph_feats(self.agg_method)
+        feats = self.proj_l(feats)
         feats = self.relu_l(graph.cond_feats) * feats
         logits = self.logit_l(feats)
         return logits
@@ -544,7 +550,7 @@ class EdgeWeightLayer(nn.Module):
                     nn.Dropout(dropout),
                     nn.utils.weight_norm(nn.Linear(edge_dim, edge_dim//2)),
                     nn.ReLU(),
-                    nn.utils.weight_norm(nn.Linear(edge_dim//2, int(kernel_size)))
+                    nn.utils.weight_norm(nn.Linear(edge_dim//2, 1))
                 )
         elif self.method == 'cgs':
             if self.method_param == 'share':
@@ -661,10 +667,11 @@ class NodeFeatLayer(nn.Module):
         if self.method == 'cond':
             self.node_feat_l = CondNodeFeat(node_dim, cond_dim, out_dim, self.method_param, dropout)
         elif self.method == 'cgs':
-            self.node_feat_l = nn.Sequential(
-                CgsNodeFeat(node_dim, out_dim, self.method_param, dropout=dropout),
-                CgsNodeFeat(out_dim, out_dim, self.method_param, use_graph_weights=False, dropout=dropout)
-            )
+            # self.node_feat_l = nn.Sequential(
+            #     CgsNodeFeat(node_dim, out_dim, self.method_param, dropout=dropout),
+            #     # CgsNodeFeat(out_dim, out_dim, self.method_param, use_graph_weights=False, dropout=dropout)
+            # )
+            self.node_feat_l = CgsNodeFeat(node_dim, out_dim, self.method_param, dropout=dropout)
 
     @property
     def layer_key(self):

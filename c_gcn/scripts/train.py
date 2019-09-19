@@ -8,12 +8,13 @@ from c_gcn import graph_vqa
 init_params = {
     # env params
     'work_dir': './work_dir',
-    'proj_name': 'vqa2_cp_9.18',
+    'proj_name': 'vqa2_cp_9.19',
     'exp_name': 'lin_con_con_con_cls',
     'exp_version': 'exp',
 
     # trainer params
     'trainer_step2prog': 50,
+    'trainer_epoch2val': 1,
 
 
     # optimizer params
@@ -45,11 +46,11 @@ init_params = {
     # 'graph_vqa_net_filter_method': 'full',
     'graph_vqa_net_filter_method': 'not_eye',
     'graph_vqa_net_layer_names': ('graph_linear_layer',
-                                  'cond_graph_conv_layer',
-                                  'cond_graph_conv_layer',
-                                  'cond_graph_conv_layer',
+                                  'graph_conv_layer',
+                                  'graph_conv_layer',
+                                  'graph_conv_layer',
                                   # 'cond_graph_conv_layer',
-                                  'cond_graph_cls_layer'
+                                  'graph_cls_layer'
                                   ),
     'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 3 + (1024*6,),
     'graph_vqa_net_layer_cond_dims': (1024, )*11,
@@ -57,19 +58,19 @@ init_params = {
     'graph_vqa_net_layer_out_dims': (1024,) * 4 + (3001, ),
     'graph_vqa_net_layer_params': ('linear',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "all^linear^softmax"},'
-                                    '"pool": "weight^mix"'
+                                    '"edge": {"feat": "mul^film", "weight": "cond_linear^softmax^8"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "cond_film^sum", "weight": "none"},'
+                                    '"pool": "mix_none"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "all^linear^softmax"},'
-                                    '"pool": "weight^mix"'
+                                    '"edge": {"feat": "mul^film", "weight": "cond_linear^softmax^6"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "cond_film^sum", "weight": "none"},'
+                                    '"pool": "mix_none"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "all^linear^softmax"},'
-                                    '"pool": "weight^mix"'
+                                    '"edge": {"feat": "mul^film", "weight": "cond_linear^softmax^4"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "cond_film^sum", "weight": "none"},'
+                                    '"pool": "mix_none"'
                                     '}',
                                     # '{'
                                     # '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
