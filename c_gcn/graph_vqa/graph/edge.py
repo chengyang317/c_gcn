@@ -218,6 +218,7 @@ class Edge(EdgeInit):
             'feats': None, 'params': None, 'weights': None
         }
         self.feat_layers, self.logit_layers, self.param_layers = {}, {}, {}
+        self.s_feat_layer = None
         super().__init__(node)
 
     def init_op(self):

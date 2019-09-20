@@ -56,7 +56,7 @@ class EdgeFeatFilm(nn.Module):
             nn.utils.weight_norm(nn.Linear(node_dim, edge_dim)),
             nn.ReLU()
         )
-        edge_hid_dim = edge_dim+8 if n2n_method in ('sum', 'mul', 'max') else edge_dim*2+8
+        edge_hid_dim = edge_dim+30 if n2n_method in ('sum', 'mul', 'max') else edge_dim*2+30
         self.edge_hid_dim = edge_hid_dim
         # self.edge_proj_l = nn.Sequential(
         #     nn.utils.weight_norm(nn.Linear(edge_in_dim, edge_dim)),
@@ -64,7 +64,10 @@ class EdgeFeatFilm(nn.Module):
         # )
         self.drop_l = nn.Dropout(dropout)
         self.film_l = FilmFusion(edge_hid_dim, cond_dim, edge_dim, act_type='relu')
-
+        self.edge_spatial_linear_l = nn.Sequential(
+            nn.utils.weight_norm(nn.Linear(8, 30)),
+            nn.ReLU()
+        )
         self.node_dim = node_dim
 
     def forward(self, graph: Graph):
@@ -84,8 +87,10 @@ class EdgeFeatFilm(nn.Module):
             joint_feats = node_i_feats * node_j_feats
         else:
             raise NotImplementedError()
-
-        joint_feats = torch.cat((joint_feats, edge.load_spatial_feats(node.boxes)), dim=-1)
+        s_feats = edge.load_spatial_feats(node.boxes)
+        s_feats = self.edge_spatial_linear_l(s_feats)
+        edge.s_feat_layer = self.edge_spatial_linear_l
+        joint_feats = torch.cat((joint_feats, s_feats), dim=-1)
         edge_batch_ids = node.batch_ids[edge.node_j_ids]
         edge_feats = self.film_l(joint_feats, graph.cond_feats, edge_batch_ids)
         return edge_feats
