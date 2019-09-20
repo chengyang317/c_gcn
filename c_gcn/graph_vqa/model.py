@@ -13,10 +13,13 @@ class GraphVqaModel(NetModel):
         self.q_net = q_net
         self.graph_net = graph_net
 
-    def forward(self, img_obj_feats, q_labels, q_lens, q_ids):
+    def forward(self, img_obj_feats, q_labels, q_lens, q_ids, img_obj_nums=None, img_obj_boxes=None):
         q_feats = self.q_net(q_labels, q_lens)
-        img_obj_feats, box_feats = img_obj_feats[:, :, :-4], img_obj_feats[:, :, -4:]
-        logits = self.graph_net(img_obj_feats, box_feats, q_feats, q_ids)
+        if img_obj_boxes is None:
+            obj_feats, obj_boxes = img_obj_feats.split([img_obj_feats.shape[-1]-4, 4], dim=-1)
+        else:
+            obj_feats, obj_boxes = img_obj_feats, img_obj_boxes
+        logits = self.graph_net(obj_feats, obj_boxes, q_feats, q_ids, img_obj_nums)
         return {'logits': {'name': 'logits', 'value': logits, 'tags': ('no_cpu',)}}
 
     @classmethod

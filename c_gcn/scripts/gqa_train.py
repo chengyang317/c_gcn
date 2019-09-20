@@ -22,25 +22,25 @@ init_params = {
     'optimizer_lr': 3e-4,
 
     # dataset params
-    'dataset_cls': 'graph_vqa2_cp_dataset',
+    'dataset_cls': 'graph_gqa_dataset',
     # 'dataset_req_field_names': ('a_label_scores', 'q_labels'),
-    'dataset_batch_size': 64,
-    'dataset_splits': ('train', 'test'),
+    'dataset_batch_size': 55,
+    'dataset_splits': ('train', 'val'),
     'dataset_shuffles': (True, False),
     'dataset_belongs': ('train', 'eval'),
     'dataset_num_workers': 0,
 
     # criterion params
-    'criterion_cls': 'vqa2_cross_entropy',
+    'criterion_cls': 'gqa_cross_entropy',
 
     # cuda params:
     'cuda_cls': 'cuda',
-    'cuda_is_prefetch': True,
+    'cuda_is_prefetch': False,
 
 
     # model params
     'model_cls': 'graph_vqa_model',
-    'model_q_net_cls': 'cgs_graph_q_net',
+    'model_q_net_cls': 'gqa_graph_q_net',
     'graph_q_net_dropout': 0.2,
     # 'graph_q_net_module_num': 2,
     'graph_vqa_net_layer_names': ('graph_linear_layer',
@@ -53,7 +53,7 @@ init_params = {
     'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 3 + (1024*6,),
     'graph_vqa_net_layer_cond_dims': (1024, )*11,
     'graph_vqa_net_layer_edge_dims': (512, )*11,
-    'graph_vqa_net_layer_out_dims': (1024,) * 4 + (3001, ),
+    'graph_vqa_net_layer_out_dims': (1024,) * 4 + (1845, ),
     'graph_vqa_net_layer_params': ('linear',
                                     '{'
                                     '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'

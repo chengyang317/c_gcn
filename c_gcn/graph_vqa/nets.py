@@ -1,5 +1,5 @@
 # coding=utf-8
-from pt_pack import LayerNet, Net, Dataset
+from pt_pack import LayerNet, Net, Dataset, Embedding
 from pt_pack.utils import try_set_attr, load_func_params
 from .graph import Graph
 import torch.nn as nn
@@ -37,6 +37,34 @@ class CgsGraphQNet(Net):
     def build(cls, params, sub_cls=None, controller=None):
         dataset_cls = Dataset.load_cls(params.dataset_cls)
         q_vocab, _ = dataset_cls.load_combined_vocab()
+        kwargs = load_func_params(params, cls.__init__, cls.prefix_name())
+        kwargs[f'{cls.prefix_name()}_q_vocab'] = q_vocab
+        return cls.default_build(kwargs, controller=controller)
+
+
+class GqaGraphQNet(Net):
+    prefix = 'graph_q_net'
+
+    def __init__(self, q_vocab, embed_dim: int = 300, hid_dim: int = 1024, dropout: float = 0.):
+        super().__init__()
+        self.q_vocab = q_vocab
+        self.embedding = Embedding(q_vocab.embed_init)
+        self.rnn = nn.GRU(embed_dim, hid_dim, batch_first=True)
+        self.dropout_l = nn.Dropout(dropout)
+        self.reset_parameters()
+
+    def forward(self, q_labels, q_len):
+        emb = self.embedding(q_labels)
+        # emb = self.dropout_l(emb)
+        packed = pack_padded_sequence(emb, q_len.squeeze().tolist(), batch_first=True)
+        _, hid = self.rnn(packed)
+        hid = self.dropout_l(hid)
+        return hid.squeeze()
+
+    @classmethod
+    def build(cls, params, sub_cls=None, controller=None):
+        dataset_cls = Dataset.load_cls(params.dataset_cls)
+        q_vocab, _ = dataset_cls.load_combined_vocab(params.dataset_data_dir)
         kwargs = load_func_params(params, cls.__init__, cls.prefix_name())
         kwargs[f'{cls.prefix_name()}_q_vocab'] = q_vocab
         return cls.default_build(kwargs, controller=controller)
@@ -139,8 +167,8 @@ class CondGraphVqaNet(LayerNet):
         super().__init__(layers)
         self.reset_parameters()
 
-    def forward(self, obj_feats, obj_coord, q_feats, q_ids):
-        graph = Graph(obj_feats, obj_coord, q_ids=q_ids)
+    def forward(self, obj_feats, obj_boxes, q_feats, q_ids, obj_nums=None):
+        graph = Graph(obj_feats, obj_boxes, node_valid_nums=obj_nums)
         conv_layer_idx = 0
         for idx, layer in enumerate(self.layers):
             if not isinstance(q_feats, (list, tuple)):

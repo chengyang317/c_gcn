@@ -4,7 +4,35 @@ import torch.nn as nn
 import torch
 
 
-__all__ = ['Vqa2CrossEntropy', 'ClevrCrossEntropy', 'Vqa2NewCrossEntropy']
+__all__ = ['Vqa2CrossEntropy', 'ClevrCrossEntropy', 'Vqa2NewCrossEntropy', 'GqaCrossEntropy']
+
+
+class GqaCrossEntropy(Criterion):
+    loss_cls = nn.CrossEntropyLoss
+
+    def __init__(self,):
+        super().__init__()
+
+    def forward(self, message):
+        answer = message['batch_data']['value']['a_labels']
+        logits = message['logits']['value']
+        loss = self.loss_l(logits, answer)
+        correct = logits.data.max(1)[1] == answer
+        acc = correct.sum().item() / logits.size(0)
+        log = {
+            'loss': {'name': 'loss', 'value': loss, 'tags': ('keep', 'tf', 'prog', 'mean')},
+            'acc': {'name': 'acc', 'value': acc, 'tags': ('keep', 'tf', 'prog', 'mean')},
+        }
+        message.update(log)
+        return message
+
+    def evaluate(self, model_out: torch.Tensor, sample):
+        answer = sample['a_labels']
+        q_ids = sample['q_ids']
+        correct = model_out.data.max(1)[1] == answer
+        acc = correct.sum().item() / model_out.size(0)
+        log = {'acc': acc, 'correct': correct.tolist(), 'q_ids': q_ids.tolist(), 'loss': None}
+        return log
 
 
 class Vqa2CrossEntropy(Criterion):

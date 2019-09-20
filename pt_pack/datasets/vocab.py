@@ -29,6 +29,7 @@ class Vocab(object):
             self.idx2word = idx2word
             self.word2idx = word2idx
         self.strict = strict
+        self.embed_init = None
 
     @classmethod
     def build_from_sequences(cls, name, data_dir, sequences, min_count_num=None, max_word_num=None, special_symbols=None):
@@ -42,6 +43,14 @@ class Vocab(object):
         counter = collections.Counter(dict(most_common))
         return cls(name, data_dir, counter=counter, special_symbols=special_symbols)
 
+    @classmethod
+    def build_from_txt(cls, name, txt_file):
+        with txt_file.open() as f:
+            lines = f.readlines()
+        word_list = [l.strip() for l in lines]
+        w2idx = {w: idx for idx, w in enumerate(word_list)}
+        return cls(name, txt_file.parent, word_list, word2idx=w2idx)
+
     def dump_to_file(self, json_file=None):
         json_file = json_file or self.data_dir.joinpath(self.name)
         json.dump(self.counter, json_file.open('w'))
@@ -51,9 +60,9 @@ class Vocab(object):
         json.dump({'idx2word': self.idx2word, 'word2idx': self.word2idx}, json_file.open('w'))
 
     @classmethod
-    def from_file(cls, name, data_dir, json_file, strict=False):
+    def from_file(cls, name, json_file, strict=False):
         json_dict = json.load(json_file.open())
-        return cls.build_from_statistic(json_dict['idx2word'], json_dict['word2idx'], name, data_dir, strict)
+        return cls.build_from_statistic(json_dict['idx2word'], json_dict['word2idx'], name, json_file.parent, strict)
 
     @classmethod
     def build_from_counter_file(cls, name, data_dir, json_file, special_symbols=None):
@@ -73,7 +82,9 @@ class Vocab(object):
 
     @property
     def padding_idx(self):
-        return self.word2idx['<padding>']
+        if '<pad>' not in self.word2idx:
+            return self.word2idx['<padding>']
+        return self.word2idx['<pad>']
 
     def __getitem__(self, item):
         if isinstance(item, int):
@@ -83,10 +94,10 @@ class Vocab(object):
                 if self.strict:
                     raise IndexError(f'Cannot find {item} in vocab')
                 else:
-                    if '<padding>' not in self.word2idx:
+                    if '<unk>' not in self.word2idx:
                         raise IndexError(f'Cannot find {item} in vocab')
                     else:
-                        item = '<padding>'
+                        item = '<unk>'
             return self.word2idx[item]
         else:
             raise NotImplementedError()

@@ -10,7 +10,7 @@ class Node(object):
     caches = {}
 
     def __init__(self, graph, node_feats, node_boxes=None, node_valid_nums=None):
-        assert node_feats.dim() == 3
+        # assert node_feats.dim() == 3
         self.graph = graph
         self.batch_num, self.node_num, self.feat_num = node_feats.shape
         self.valid_nums = node_valid_nums

@@ -11,12 +11,11 @@ __all__ = ['Graph']
 class Graph(object):
     def __init__(self,
                  node_feats,
-                 node_coords=None,
-                 node_weights=None,
+                 node_boxes=None,
                  cond_feats=None,
-                 q_ids=None,
+                 node_valid_nums=None,
                  ):
-        self.node = Node(self, node_feats, node_coords, node_weights)
+        self.node = Node(self, node_feats, node_boxes, node_valid_nums)
         self.edge = Edge(self.node)
         self.cond_feats = cond_feats
         self.layer_feats = list()

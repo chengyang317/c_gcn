@@ -97,6 +97,8 @@ def to_cuda(maybe_tensor, device, non_blocking=False):
             for key, value in maybe_tensor.items()
         }
     elif isinstance(maybe_tensor, (list, tuple)):
+        if isinstance(maybe_tensor[0], str):
+            return maybe_tensor
         return [to_cuda(x, device, non_blocking) for x in maybe_tensor]
     else:
         raise NotImplementedError()
