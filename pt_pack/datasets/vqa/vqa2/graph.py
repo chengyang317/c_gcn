@@ -281,11 +281,12 @@ class GraphVqa2CpDataset(Dataset):
                  split: str = 'train',
                  req_field_names: List[str] = ('img_obj_feats', 'q_labels', 'q_lens', 'a_label_scores', 'a_label_counts', 'q_ids'),
                  seq_len: int = 14,
+                 is_lazy: bool = False,
                  ):
         self._question_vocab = None
         self._answer_vocab = None
         self.seq_len = seq_len
-        super().__init__(data_dir, split, req_field_names)
+        super().__init__(data_dir, split, req_field_names, is_lazy)
 
     def build_fields(self):
         data_dir = self.data_dir.joinpath(self.name)
