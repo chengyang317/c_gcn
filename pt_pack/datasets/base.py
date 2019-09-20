@@ -18,12 +18,14 @@ class Dataset(py_data.Dataset, Reader, PtBase):
                  data_dir: str,
                  split: str,
                  req_field_names: List[str],
+                 is_lazy=False
                  ):
         self.data_dir = to_path(data_dir)
         self.split = split
         self.loaders = None
+        self._length = None
         py_data.Dataset.__init__(self)
-        Reader.__init__(self, req_field_names)
+        Reader.__init__(self, req_field_names, is_lazy)
         PtBase.__init__(self)
 
     @classmethod
@@ -60,6 +62,8 @@ class Dataset(py_data.Dataset, Reader, PtBase):
         return loaders
 
     def __getitem__(self, item):
+        if not self.has_init:
+            self.init_fields()
         if isinstance(item, str):
             return self.name2fields[item]
         datas = [data for data in self.field_group[item]]

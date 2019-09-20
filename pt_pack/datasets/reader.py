@@ -18,12 +18,22 @@ __all__ = ['DictReader', 'JsonReader', 'H5Reader', 'ImgDirReader', 'SwitchReader
 
 
 class Reader(object):
-    def __init__(self, req_field_names=None):
+    def __init__(self, req_field_names=None, is_lazy=False):
         self.req_field_names = to_seq(req_field_names)
+        self.is_lazy = is_lazy
+        self.fields = None
+        self.field_group = None
+        self.has_init = False
+        if not is_lazy:
+            self.init_fields()
+            self.has_init = True
+
+    def init_fields(self):
         self.fields = self.build_fields()
         self.req_field_names = self.req_field_names or self.field_names
         self.fields = [self.name2fields[name] for name in self.req_field_names]
         self.field_group = FieldGroup(self.fields)
+        self.has_init = True
 
     @property
     def is_dirty(self):

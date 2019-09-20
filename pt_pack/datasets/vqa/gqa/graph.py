@@ -49,7 +49,7 @@ class GraphGqaDataset(Dataset):
         self._answer_vocab = None
         if split == 'test':
             req_field_names = [item for item in req_field_names if item not in ('a_label_scores', 'a_label_counts')]
-        super().__init__(data_dir, split, req_field_names)
+        super().__init__(data_dir, split, req_field_names, is_lazy=True)
 
     def build_fields(self):
         ann_reader = DictReader(self.load_combined_anns(self.data_dir, self.split))
@@ -169,7 +169,10 @@ class GraphGqaDataset(Dataset):
         return anns_t
 
     def __len__(self):
-        return len(self['q_labels'])
+        if self._length is None:
+            ann_reader = DictReader(self.load_combined_anns(self.data_dir, self.split))
+            self._length = len(ann_reader['q_ids'])
+        return self._length
 
     def collate_fn(self, batch):
         if 'q_lens' in self.req_field_names:
