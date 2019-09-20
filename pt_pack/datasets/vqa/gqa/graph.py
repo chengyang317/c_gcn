@@ -44,12 +44,13 @@ class GraphGqaDataset(Dataset):
                  split: str = 'train',
                  req_field_names: List[str] = ('img_obj_feats', 'q_labels', 'q_lens', 'a_labels', 'q_ids',
                                                'img_obj_nums', 'img_obj_boxes'),
+                 is_lazy: bool = True
                  ):
         self._question_vocab = None
         self._answer_vocab = None
         if split == 'test':
             req_field_names = [item for item in req_field_names if item not in ('a_label_scores', 'a_label_counts')]
-        super().__init__(data_dir, split, req_field_names, is_lazy=True)
+        super().__init__(data_dir, split, req_field_names, is_lazy=is_lazy)
 
     def build_fields(self):
         ann_reader = DictReader(self.load_combined_anns(self.data_dir, self.split))

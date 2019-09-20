@@ -18,7 +18,7 @@ class Dataset(py_data.Dataset, Reader, PtBase):
                  data_dir: str,
                  split: str,
                  req_field_names: List[str],
-                 is_lazy=False
+                 is_lazy: bool = False
                  ):
         self.data_dir = to_path(data_dir)
         self.split = split
@@ -34,6 +34,7 @@ class Dataset(py_data.Dataset, Reader, PtBase):
         add_argument(group, f'{cls.prefix_name()}_splits', type=str, nargs='*')
         add_argument(group, f'{cls.prefix_name()}_shuffles', type=str_bool, nargs='*')
         add_argument(group, f'{cls.prefix_name()}_belongs', type=str, nargs='*')
+        add_argument(group, f'{cls.prefix_name()}_is_lazy', type=str_bool)
         add_func_args(group, py_data.DataLoader.__init__, cls.prefix_name())
 
     @classmethod
