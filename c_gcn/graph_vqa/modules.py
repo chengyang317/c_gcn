@@ -88,8 +88,10 @@ class EdgeFeatFilm(nn.Module):
         else:
             raise NotImplementedError()
         s_feats = edge.load_spatial_feats(node.boxes)
-        s_feats = self.edge_spatial_linear_l(s_feats)
-        edge.s_feat_layer = self.edge_spatial_linear_l
+        s_layer = edge.s_feat_layer or self.edge_spatial_linear_l
+        s_feats = s_layer(s_feats)
+        if edge.s_feat_layer is None:
+            edge.s_feat_layer = self.edge_spatial_linear_l
         joint_feats = torch.cat((joint_feats, s_feats), dim=-1)
         edge_batch_ids = node.batch_ids[edge.node_j_ids]
         edge_feats = self.film_l(joint_feats, graph.cond_feats, edge_batch_ids)
