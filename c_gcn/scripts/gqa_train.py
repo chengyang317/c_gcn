@@ -8,13 +8,13 @@ from c_gcn import graph_vqa
 init_params = {
     # env params
     'work_dir': './work_dir',
-    'proj_name': 'vqa2_cp_9.20',
+    'proj_name': 'gqa_cp_9.21',
     'exp_name': 'lin_con_con_con_cls',
     'exp_version': 'exp',
 
     # trainer params
     'trainer_step2prog': 50,
-    'trainer_epoch2val': 1,
+    'trainer_epoch2val': 2,
 
 
     # optimizer params
@@ -35,7 +35,7 @@ init_params = {
 
     # cuda params:
     'cuda_cls': 'cuda',
-    'cuda_is_prefetch': False,
+    'cuda_is_prefetch': True,
 
 
     # model params
@@ -57,17 +57,17 @@ init_params = {
     'graph_vqa_net_layer_params': ('linear',
                                     '{'
                                     '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "none"},'
                                     '"pool": "mix"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
+                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^6"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "none"},'
                                     '"pool": "mix"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
-                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "node^linear^sigmoid"},'
+                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^4"},'
+                                    '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "none"},'
                                     '"pool": "mix"'
                                     '}',
                                     # '{'

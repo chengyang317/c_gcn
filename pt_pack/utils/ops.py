@@ -4,7 +4,7 @@ import math
 
 
 __all__ = ['to_edge_idx', 'tri_mask', 'tri_index', 'is_same', 'node_intersect', 'edge_filter', 'edge_select', 'is_nan',
-           'is_inf']
+           'is_inf', 'is_panic']
 
 
 def to_edge_idx(top_id, k=None):
@@ -143,6 +143,10 @@ def is_inf(x):
         print(f'inf num is {num}')
         torch.save(x, 'is_inf.pt')
     return True if num > 0 else False
+
+
+def is_panic(x):
+    return is_inf(x) or is_nan(x)
 
 
 if __name__ == '__main__':

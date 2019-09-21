@@ -1,6 +1,6 @@
 # coding=utf-8
 from pt_pack import LayerNet, Net, Dataset, Embedding
-from pt_pack.utils import try_set_attr, load_func_params
+from pt_pack.utils import try_set_attr, load_func_params, is_panic
 from .graph import Graph
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence

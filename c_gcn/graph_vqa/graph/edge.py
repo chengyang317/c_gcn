@@ -1,7 +1,7 @@
 import torch
 import collections
 from typing import Dict
-from pt_pack import node_intersect, is_nan, is_inf
+from pt_pack import node_intersect
 import torch_scatter as ts
 
 
@@ -101,10 +101,10 @@ class EdgeOp(object):
         self.next_ops = {}
 
     def norm(self, edge_attr, method):
-        edge_attr = edge_attr - edge_attr.max() / 2
+        edge_attr = edge_attr - edge_attr.max()
         if method == 'softmax':
             exp = edge_attr.exp()
-            sums = ts.scatter_add(exp, self.node_i_ids, dim=0)
+            sums = ts.scatter_add(exp, self.node_i_ids, dim=0) + 1e-5
             return exp / sums[self.node_i_ids]
         else:
             raise NotImplementedError()
