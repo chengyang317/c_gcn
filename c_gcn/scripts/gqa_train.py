@@ -50,25 +50,25 @@ init_params = {
                                   # 'cond_graph_conv_layer',
                                   'cond_graph_cls_layer'
                                   ),
-    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 3 + (1024*6,),
+    'graph_vqa_net_layer_node_dims': (2052,) + (1028,) * 3 + (1024*3,),
     'graph_vqa_net_layer_cond_dims': (1024, )*11,
     'graph_vqa_net_layer_edge_dims': (512, )*11,
     'graph_vqa_net_layer_out_dims': (1024,) * 4 + (1845, ),
     'graph_vqa_net_layer_params': ('linear',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^8"},'
+                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
                                     '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "none"},'
-                                    '"pool": "mix"'
+                                    '"pool": "mean"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^6"},'
+                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
                                     '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "none"},'
-                                    '"pool": "mix"'
+                                    '"pool": "mean"'
                                     '}',
                                     '{'
-                                    '"edge": {"feat": "mul^film", "weight": "softmax^1^4"},'
+                                    '"edge": {"feat": "cat^film", "weight": "softmax^1^8"},'
                                     '"conv": {"feat": "none", "param": "linear", "node": "film^sum", "weight": "none"},'
-                                    '"pool": "mix"'
+                                    '"pool": "mean"'
                                     '}',
                                     # '{'
                                     # '"edge": {"feat": "share", "weight": "softmax^share^8"},'
