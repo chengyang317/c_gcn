@@ -42,6 +42,33 @@ class CgsGraphQNet(Net):
         return cls.default_build(kwargs, controller=controller)
 
 
+class ClevrGraphQNet(Net):
+    prefix = 'graph_q_net'
+
+    def __init__(self, q_vocab, embed_dim: int = 300, hid_dim: int = 1024, dropout: float = 0.):
+        super().__init__()
+        self.q_vocab = q_vocab
+        self.embedding = nn.Embedding(len(q_vocab), embed_dim)
+        self.rnn = nn.GRU(embed_dim, hid_dim, batch_first=True)
+        self.dropout_l = nn.Dropout(dropout)
+        self.reset_parameters()
+
+    def forward(self, q_labels, q_len):
+        emb = self.embedding(q_labels)
+        packed = pack_padded_sequence(emb, q_len.squeeze().tolist(), batch_first=True)
+        _, hid = self.rnn(packed)
+        hid = self.dropout_l(hid)
+        return hid.squeeze()
+
+    @classmethod
+    def build(cls, params, sub_cls=None, controller=None):
+        dataset_cls = Dataset.load_cls(params.dataset_cls)
+        q_vocab, _ = dataset_cls.load_combined_vocab()
+        kwargs = load_func_params(params, cls.__init__, cls.prefix_name())
+        kwargs[f'{cls.prefix_name()}_q_vocab'] = q_vocab
+        return cls.default_build(kwargs, controller=controller)
+
+
 class GqaGraphQNet(Net):
     prefix = 'graph_q_net'
 

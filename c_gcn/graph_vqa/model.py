@@ -15,6 +15,8 @@ class GraphVqaModel(NetModel):
 
     def forward(self, img_obj_feats, q_labels, q_lens, q_ids, img_obj_nums=None, img_obj_boxes=None):
         q_feats = self.q_net(q_labels, q_lens)
+        if img_obj_nums is not None:
+            img_obj_nums = img_obj_nums.long()
         if img_obj_nums is not None and img_obj_boxes.shape[1] > img_obj_nums.max():
             max_num = img_obj_nums.max().item()
             img_obj_feats = img_obj_feats[:, :max_num, :]
